@@ -11,6 +11,8 @@ import { User } from "./auth";
 export const ErrorResponses = {
   accessDenied: () =>
     NextResponse.json({ error: "Access denied" }, { status: 403 }),
+  unauthorized: (message: string = "Unauthorized") =>
+    NextResponse.json({ error: message }, { status: 401 }),
   notFound: (resource: string = "Resource") =>
     NextResponse.json({ error: `${resource} not found` }, { status: 404 }),
   badRequest: (message: string) =>
