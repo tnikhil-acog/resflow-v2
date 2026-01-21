@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: resflow_db
+    restart: always
+    environment:
+      POSTGRES_DB: resflowdb
+      POSTGRES_USER: resflowuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+      - ./backups:/backups
+    ports:
+      - "5432:5432"
+    networks:
+      - resflow-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resflowuser -d resflowdb"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resflow_app
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://resflowuser:${POSTGRES_PASSWORD:-changeme}@db:5432/resflowdb
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "3000:3000"
+    networks:
+      - resflow-network
+
+networks:
+  resflow-network:
+    driver: bridge
