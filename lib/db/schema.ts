@@ -146,7 +146,7 @@ export const projectAllocation = pgTable("project_allocation", {
 export const skills = pgTable("skills", {
   skill_id: uuid("skill_id").defaultRandom().primaryKey(),
   skill_name: varchar("skill_name", { length: 100 }).notNull().unique(),
-  skill_department: varchar("skill_department", { length: 100 }),
+  department_id: uuid("department_id").references(() => departments.id),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

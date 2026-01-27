@@ -112,13 +112,15 @@ export async function GET(req: NextRequest) {
     // Get employee skills with joins
     const employeeSkillsData = await db
       .select({
+        id: schema.employeeSkills.id,
         skill_id: schema.employeeSkills.skill_id,
         emp_id: schema.employeeSkills.emp_id,
         proficiency_level: schema.employeeSkills.proficiency_level,
         approved_by: schema.employeeSkills.approved_by,
         approved_at: schema.employeeSkills.approved_at,
         skill_name: schema.skills.skill_name,
-        skill_department: schema.skills.skill_department,
+        department_id: schema.skills.department_id,
+        department_name: schema.departments.name,
         employee_code: schema.employees.employee_code,
         employee_name: schema.employees.full_name,
       })
@@ -126,6 +128,10 @@ export async function GET(req: NextRequest) {
       .innerJoin(
         schema.skills,
         eq(schema.employeeSkills.skill_id, schema.skills.skill_id),
+      )
+      .leftJoin(
+        schema.departments,
+        eq(schema.skills.department_id, schema.departments.id),
       )
       .innerJoin(
         schema.employees,
@@ -157,6 +163,7 @@ export async function GET(req: NextRequest) {
 
     // Format response with status
     const employee_skills = employeeSkillsData.map((es) => ({
+      id: es.id,
       skill_id: es.skill_id,
       skill_name: es.skill_name,
       emp_id: es.emp_id,
