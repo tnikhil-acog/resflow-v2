@@ -3,7 +3,7 @@
  */
 
 import { db, schema } from "./db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 /**
  * Check if a field value is unique in a table
@@ -124,7 +124,7 @@ export async function getDemandSkillsMap(
       schema.skills,
       eq(schema.demandSkills.skill_id, schema.skills.skill_id),
     )
-    .where(sql`${schema.demandSkills.demand_id} = ANY(${demandIds})`);
+    .where(inArray(schema.demandSkills.demand_id, demandIds));
 
   // Group skills by demand_id
   return demandSkills.reduce(

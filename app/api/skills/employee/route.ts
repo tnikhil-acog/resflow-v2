@@ -47,14 +47,15 @@ export async function GET(req: NextRequest) {
     }
     // hr_executive can view any employee's skills
 
-    // Get employee skills with skill details
+    // Get employee skills with skill details and department
     const employeeSkills = await db
       .select({
         id: schema.employeeSkills.id,
         emp_id: schema.employeeSkills.emp_id,
         skill_id: schema.employeeSkills.skill_id,
         skill_name: schema.skills.skill_name,
-        skill_department: schema.skills.skill_department,
+        department_id: schema.skills.department_id,
+        department_name: schema.departments.name,
         proficiency_level: schema.employeeSkills.proficiency_level,
         approved_by: schema.employeeSkills.approved_by,
         approved_at: schema.employeeSkills.approved_at,
@@ -64,6 +65,10 @@ export async function GET(req: NextRequest) {
       .innerJoin(
         schema.skills,
         eq(schema.employeeSkills.skill_id, schema.skills.skill_id),
+      )
+      .leftJoin(
+        schema.departments,
+        eq(schema.skills.department_id, schema.departments.id),
       )
       .where(eq(schema.employeeSkills.emp_id, emp_id));
 

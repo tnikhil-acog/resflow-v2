@@ -110,7 +110,8 @@ async function handleSkillApprovals(
       employee_code: schema.employees.employee_code,
       employee_name: schema.employees.full_name,
       skill_name: schema.skills.skill_name,
-      skill_department: schema.skills.skill_department,
+      department_id: schema.skills.department_id,
+      department_name: schema.departments.name,
     })
     .from(schema.employeeSkills)
     .innerJoin(
@@ -120,6 +121,10 @@ async function handleSkillApprovals(
     .innerJoin(
       schema.skills,
       eq(schema.employeeSkills.skill_id, schema.skills.skill_id),
+    )
+    .leftJoin(
+      schema.departments,
+      eq(schema.skills.department_id, schema.departments.id),
     )
     .where(and(...filters))
     .limit(limit)
@@ -134,6 +139,8 @@ async function handleSkillApprovals(
     employee_name: sa.employee_name,
     skill_id: sa.skill_id,
     skill_name: sa.skill_name,
+    department_id: sa.department_id,
+    department_name: sa.department_name,
     proficiency_level: sa.proficiency_level,
     requested_at: sa.created_at,
   }));

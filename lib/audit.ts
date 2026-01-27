@@ -1,7 +1,23 @@
 import { db, schema } from "@/lib/db";
 
 export interface AuditLogData {
-  entity_type: string;
+  entity_type:
+    | "EMPLOYEE"
+    | "DEPARTMENT"
+    | "CLIENT"
+    | "PROJECT"
+    | "PROJECT_ALLOCATION"
+    | "SKILL"
+    | "EMPLOYEE_SKILL"
+    | "DEMAND"
+    | "DEMAND_SKILL"
+    | "REPORT"
+    | "TASK"
+    | "PHASE"
+    | "PHASE_REPORT"
+    | "DAILY_PROJECT_LOG"
+    | "ATTRIBUTE"
+    | "ATTRIBUTE_VALUE";
   entity_id: string;
   operation: "INSERT" | "UPDATE" | "DELETE";
   changed_by: string;
