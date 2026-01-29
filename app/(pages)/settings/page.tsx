@@ -17,7 +17,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingPage, LoadingSpinner } from "@/components/loading-spinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, User } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  User,
+  Building2,
+  Users,
+} from "lucide-react";
+import { DepartmentsTab } from "@/components/settings/departments-tab";
+import { ClientsTab } from "@/components/settings/clients-tab";
 
 interface UserProfile {
   id: string;
@@ -199,6 +207,18 @@ function SettingsContent() {
               <User className="h-4 w-4 mr-2" />
               Profile
             </TabsTrigger>
+            {user?.employee_role === "hr_executive" && (
+              <>
+                <TabsTrigger value="departments">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Departments
+                </TabsTrigger>
+                <TabsTrigger value="clients">
+                  <Users className="h-4 w-4 mr-2" />
+                  Clients
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           <TabsContent value="profile" className="space-y-6">
@@ -382,6 +402,20 @@ function SettingsContent() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Departments Tab - HR Only */}
+          {user?.employee_role === "hr_executive" && (
+            <TabsContent value="departments">
+              <DepartmentsTab />
+            </TabsContent>
+          )}
+
+          {/* Clients Tab - HR Only */}
+          {user?.employee_role === "hr_executive" && (
+            <TabsContent value="clients">
+              <ClientsTab />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>

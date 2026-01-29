@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/status-badge";
+import { LogWorkWidget } from "@/components/log-work-widget";
 import {
   Briefcase,
   CheckSquare,
@@ -93,7 +94,21 @@ export default function DashboardPage() {
 
         const result = await response.json();
         console.log("Dashboard data received:", result);
-        setDashboardData(result.data);
+
+        // Map API response to dashboard data structure
+        // API returns data directly, not wrapped in { data: {...} }
+        setDashboardData({
+          role: user?.employee_role || "employee",
+          metrics: result.metrics || {
+            pendingTasks: 0,
+            completedTasks: 0,
+            activeProjects: 0,
+            missingReports: 0,
+            weeklyHours: 0,
+          },
+          recentTasks: result.tasks || [], // API returns 'tasks' directly
+          recentEmployees: [],
+        });
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
         setError(
@@ -243,71 +258,67 @@ export default function DashboardPage() {
 
           {userRole === "project_manager" && (
             <>
-              <Card>
+              <Card className="border-t-4 border-t-blue-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    Pending Tasks
+                  </CardTitle>
+                  <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
+                    <CheckSquare className="h-5 w-5 text-blue-500" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">
+                    {metrics.pendingTasks || 0}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-t-4 border-t-orange-500">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
                     Active Projects
                   </CardTitle>
-                  <Briefcase className="h-4 w-4 text-muted-foreground" />
+                  <div className="p-2 bg-orange-50 dark:bg-orange-950 rounded">
+                    <Briefcase className="h-5 w-5 text-orange-500" />
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
+                  <div className="text-3xl font-bold">
                     {metrics.activeProjects || 0}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Projects managing
-                  </p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-t-4 border-t-purple-500">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Completed Projects
+                    Weekly Hours
                   </CardTitle>
-                  <Briefcase className="h-4 w-4 text-muted-foreground" />
+                  <div className="p-2 bg-purple-50 dark:bg-purple-950 rounded">
+                    <Clock className="h-5 w-5 text-purple-500" />
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
-                    {metrics.completedProjects || 0}
+                  <div className="text-3xl font-bold">
+                    {metrics.weeklyHours || 0}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Projects completed
-                  </p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-t-4 border-t-yellow-500">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Team Members
+                    Missing Reports
                   </CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <div className="p-2 bg-yellow-50 dark:bg-yellow-950 rounded">
+                    <AlertCircle className="h-5 w-5 text-yellow-500" />
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
-                    {metrics.teamMembers || 0}
+                  <div className="text-3xl font-bold">
+                    {metrics.missingReports || 0}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    People in your teams
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Pending Approvals
-                  </CardTitle>
-                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {metrics.pendingApprovals || 0}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Requiring attention
-                  </p>
                 </CardContent>
               </Card>
             </>
@@ -324,7 +335,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {metrics.pendingTasks || 5}
+                    {metrics.pendingTasks || 0}
                   </div>
                 </CardContent>
               </Card>
@@ -338,7 +349,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {metrics.completedTasks || 3}
+                    {metrics.completedTasks || 0}
                   </div>
                 </CardContent>
               </Card>
@@ -353,43 +364,7 @@ export default function DashboardPage() {
           {/* Left Column - Time Tracking & Weekly Report */}
           <div className="space-y-6">
             {/* Daily Work Log */}
-            <Card>
-              <CardHeader className="flex flex-row items-center space-y-0 pb-4">
-                <Calendar className="h-5 w-5 mr-2" />
-                <CardTitle className="text-base font-semibold">
-                  {formatDate(currentTime)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Project</label>
-                  <select className="w-full px-3 py-2 border rounded-md bg-background">
-                    <option>Project</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Hours</label>
-                    <div className="text-center">
-                      <div className="text-4xl font-bold">04</div>
-                      <div className="text-xs text-muted-foreground">Hours</div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Minutes</label>
-                    <div className="text-center">
-                      <div className="text-4xl font-bold">00</div>
-                      <div className="text-xs text-muted-foreground">Mins</div>
-                    </div>
-                  </div>
-                </div>
-
-                <Button className="w-full" size="lg">
-                  Log Work
-                </Button>
-              </CardContent>
-            </Card>
+            <LogWorkWidget currentDate={currentTime} />
 
             {/* Submit Weekly Report */}
             <Card>
@@ -456,21 +431,21 @@ export default function DashboardPage() {
                           href={`/tasks/${task.id}`}
                           className="text-primary hover:underline"
                         >
-                          {task.task_name || "Task 1"}
+                          {task.description || "No description"}
                         </Link>
                         <div className="text-muted-foreground">
-                          {task.project_name || "Project Name"}
+                          {task.project_name || "N/A"}
                         </div>
                         <div className="text-muted-foreground">
-                          {task.end_date
-                            ? new Date(task.end_date).toLocaleDateString(
+                          {task.due_on
+                            ? new Date(task.due_on).toLocaleDateString(
                                 "en-US",
                                 {
                                   month: "short",
                                   day: "numeric",
                                 },
                               )
-                            : "Dec 21"}
+                            : "No date"}
                         </div>
                         <StatusBadge status={task.status || "DUE"} />
                       </div>
@@ -483,31 +458,164 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* PM and HR - Enhanced layouts */}
-      {userRole === "project_manager" && recentTasks.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentTasks.map((task: any) => (
-                <div
-                  key={task.id}
-                  className="flex items-center justify-between border-b pb-2 last:border-0"
+      {/* PM Dashboard Layout */}
+      {userRole === "project_manager" && (
+        <div className="grid gap-6 md:grid-cols-[1fr_350px]">
+          {/* Left Column - Time Tracking, Weekly Report & Tasks */}
+          <div className="space-y-6">
+            {/* Daily Work Log */}
+            <LogWorkWidget currentDate={currentTime} />
+
+            {/* Submit Weekly Report */}
+            <Card>
+              <CardHeader className="flex flex-row items-center space-y-0 pb-4">
+                <FileText className="h-5 w-5 mr-2" />
+                <CardTitle className="text-base font-semibold">
+                  Submit Weekly Report
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Submit a consolidated report of your work across all projects
+                  this week
+                </p>
+                <Button variant="outline" className="w-full">
+                  <ArrowUpRight className="h-4 w-4 mr-2" />
+                  Submit Report
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Last Submitted: January 6, 2026
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Tasks Section */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Tasks</CardTitle>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-primary"
+                  asChild
                 >
-                  <div>
-                    <p className="font-medium">{task.task_name || "Task"}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Due: {task.end_date || "No date"}
-                    </p>
+                  <Link href="/tasks">View All</Link>
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {recentTasks.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No tasks available
                   </div>
-                  <StatusBadge status={task.status} />
+                ) : (
+                  <div className="space-y-1">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-4 pb-2 border-b text-xs font-medium text-muted-foreground">
+                      <div className="w-6"></div>
+                      <div>Task ↕</div>
+                      <div>Project Name ↕</div>
+                      <div>Deadline ↕</div>
+                      <div>Status ↕</div>
+                    </div>
+
+                    {/* Table Rows */}
+                    {recentTasks.slice(0, 6).map((task: any, idx: number) => (
+                      <div
+                        key={task.id || idx}
+                        className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-4 py-3 border-b last:border-0 items-center text-sm"
+                      >
+                        <Checkbox />
+                        <Link
+                          href={`/tasks/${task.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {task.description || "No description"}
+                        </Link>
+                        <div className="text-muted-foreground">
+                          {task.project_name || "N/A"}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {task.due_on
+                            ? new Date(task.due_on).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )
+                            : "No date"}
+                        </div>
+                        <StatusBadge status={task.status || "DUE"} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Quick Actions */}
+          <div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto flex items-start justify-start p-4 gap-3"
+                    asChild
+                  >
+                    <Link href="/logs/new">
+                      <Clock className="h-5 w-5 mt-0.5" />
+                      <div className="text-left">
+                        <div className="text-sm font-medium">Log Work</div>
+                        <div className="text-xs text-muted-foreground">
+                          Track daily hours
+                        </div>
+                      </div>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto flex items-start justify-start p-4 gap-3"
+                    asChild
+                  >
+                    <Link href="/reports/new">
+                      <FileText className="h-5 w-5 mt-0.5" />
+                      <div className="text-left">
+                        <div className="text-sm font-medium">Submit Report</div>
+                        <div className="text-xs text-muted-foreground">
+                          Weekly summary
+                        </div>
+                      </div>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto flex items-start justify-start p-4 gap-3"
+                    asChild
+                  >
+                    <Link href="/demands/new">
+                      <Users className="h-5 w-5 mt-0.5" />
+                      <div className="text-left">
+                        <div className="text-sm font-medium">
+                          Request Resource
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Create resource demand
+                        </div>
+                      </div>
+                    </Link>
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       )}
 
       {/* HR Dashboard Layout */}
@@ -516,36 +624,7 @@ export default function DashboardPage() {
           {/* Left Column - Date/Report & Tasks */}
           <div className="space-y-6">
             {/* Daily Work Log */}
-            <Card>
-              <CardHeader className="flex flex-row items-center space-y-0 pb-4">
-                <Calendar className="h-5 w-5 mr-2" />
-                <CardTitle className="text-base font-semibold">
-                  {formatDate(currentTime)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Hours</label>
-                    <div className="text-center">
-                      <div className="text-4xl font-bold">04</div>
-                      <div className="text-xs text-muted-foreground">Hours</div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Minutes</label>
-                    <div className="text-center">
-                      <div className="text-4xl font-bold">00</div>
-                      <div className="text-xs text-muted-foreground">Mins</div>
-                    </div>
-                  </div>
-                </div>
-
-                <Button className="w-full" size="lg">
-                  Log Work
-                </Button>
-              </CardContent>
-            </Card>
+            <LogWorkWidget currentDate={currentTime} />
 
             {/* Submit Weekly Report */}
             <Card>
@@ -610,21 +689,21 @@ export default function DashboardPage() {
                           href={`/tasks/${task.id}`}
                           className="text-primary hover:underline"
                         >
-                          {task.task_name || "Task 1"}
+                          {task.description || "No description"}
                         </Link>
                         <div className="text-muted-foreground">
-                          {task.project_name || "Project Name"}
+                          {task.project_name || "N/A"}
                         </div>
                         <div className="text-muted-foreground">
-                          {task.end_date
-                            ? new Date(task.end_date).toLocaleDateString(
+                          {task.due_on
+                            ? new Date(task.due_on).toLocaleDateString(
                                 "en-US",
                                 {
                                   month: "short",
                                   day: "numeric",
                                 },
                               )
-                            : "Dec 21"}
+                            : "No date"}
                         </div>
                         <StatusBadge status={task.status || "DUE"} />
                       </div>

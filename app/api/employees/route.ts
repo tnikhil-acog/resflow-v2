@@ -136,7 +136,6 @@ export async function POST(req: NextRequest) {
         experience_years: experience_years?.toString(),
         resume_url,
         college,
-        degree,
         educational_stream,
         status: "ACTIVE",
         joined_on: toDateString(joined_on)!,

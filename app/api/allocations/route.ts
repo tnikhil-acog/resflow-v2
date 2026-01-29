@@ -1,13 +1,13 @@
 // POST /api/allocations/create
 // Allowed Roles: hr_executive
 // Check JWT role = 'hr_executive', else return 403
-// Accept: { emp_id, project_id, role, allocation_percentage, start_date, end_date, billability, is_critical_resource }
+// Accept: { emp_id, project_id, role, allocation_percentage, start_date, end_date, billability }
 // Validate: end_date must be >= start_date, else return 400 "end_date must be >= start_date"
 // Calculate total allocation: SELECT SUM(allocation_percentage) FROM project_allocation WHERE emp_id = ? AND ((start_date <= ? AND end_date >= ?) OR (start_date <= ? AND end_date >= ?))
 // If total + allocation_percentage > 100, return 400 "Employee allocation exceeds 100%. Current: X%, Requested: Y%, Total: Z%"
 // INSERT into project_allocation table with assigned_by = current_user_id
 // INSERT audit log with operation='INSERT', changed_by=current_user_id
-// Return: { id, emp_id, project_id, role, allocation_percentage, start_date, end_date, billability, is_critical_resource, assigned_by }
+// Return: { id, emp_id, project_id, role, allocation_percentage, start_date, end_date, billability, assigned_by }
 
 // GET /api/allocations/list
 // Allowed Roles: employee, project_manager, hr_executive
@@ -21,19 +21,19 @@
 // JOIN employees table to get employee_code, employee_name (full_name)
 // JOIN projects table to get project_code, project_name
 // Apply pagination using LIMIT and OFFSET
-// Return: { allocations: [{ id, emp_id, employee_code, employee_name, project_id, project_code, project_name, role, allocation_percentage, start_date, end_date, billability, is_critical_resource, assigned_by }], total, page, limit }
+// Return: { allocations: [{ id, emp_id, employee_code, employee_name, project_id, project_code, project_name, role, allocation_percentage, start_date, end_date, billability, assigned_by }], total, page, limit }
 // Error 403 if access denied
 
 // PUT /api/allocations/update
 // Allowed Roles: hr_executive
 // Check JWT role = 'hr_executive', else return 403
-// Accept: { id, allocation_percentage, end_date, billability, is_critical_resource }
+// Accept: { id, allocation_percentage, end_date, billability}
 // Get current allocation: SELECT emp_id, allocation_percentage, start_date, end_date FROM project_allocation WHERE id = ?
 // Calculate total excluding this allocation: SELECT SUM(allocation_percentage) FROM project_allocation WHERE emp_id = ? AND id != ? AND ((start_date <= ? AND end_date >= ?) OR (start_date <= ? AND end_date >= ?))
 // If total + new_allocation_percentage > 100, return 400 "Updated allocation exceeds 100%. Current other: X%, Requested: Y%, Total: Z%"
 // UPDATE project_allocation SET fields WHERE id = ?
 // INSERT audit log with operation='UPDATE', changed_by=current_user_id
-// Return: { id, allocation_percentage, end_date, billability, is_critical_resource }
+// Return: { id, allocation_percentage, end_date, billability}
 
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
@@ -59,7 +59,6 @@ export async function POST(req: NextRequest) {
       start_date,
       end_date,
       billability,
-      is_critical_resource,
     } = body;
 
     // ---------------- VALIDATION ----------------
@@ -144,7 +143,6 @@ export async function POST(req: NextRequest) {
         start_date: startDateStr,
         end_date: endDateStr ?? null, // open-ended supported
         billability: billability ?? true,
-        is_critical_resource: is_critical_resource ?? false,
         assigned_by: user.id,
       })
       .returning();
@@ -250,7 +248,6 @@ export async function GET(req: NextRequest) {
         start_date: schema.projectAllocation.start_date,
         end_date: schema.projectAllocation.end_date,
         billability: schema.projectAllocation.billability,
-        is_critical_resource: schema.projectAllocation.is_critical_resource,
         assigned_by: schema.projectAllocation.assigned_by,
       })
       .from(schema.projectAllocation)
@@ -286,13 +283,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const {
-      id,
-      allocation_percentage,
-      end_date,
-      billability,
-      is_critical_resource,
-    } = body;
+    const { id, allocation_percentage, end_date, billability } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -386,10 +377,6 @@ export async function PUT(req: NextRequest) {
       updateData.billability = billability;
     }
 
-    if (is_critical_resource !== undefined) {
-      updateData.is_critical_resource = is_critical_resource;
-    }
-
     // ---------------- UPDATE ----------------
 
     const [updatedAllocation] = await db
@@ -413,7 +400,6 @@ export async function PUT(req: NextRequest) {
       allocation_percentage: updatedAllocation.allocation_percentage,
       end_date: updatedAllocation.end_date,
       billability: updatedAllocation.billability,
-      is_critical_resource: updatedAllocation.is_critical_resource,
     });
   } catch (error) {
     console.error("Error updating allocation:", error);
@@ -423,4 +409,3 @@ export async function PUT(req: NextRequest) {
     );
   }
 }
- 

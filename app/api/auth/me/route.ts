@@ -54,7 +54,6 @@ export async function GET(req: NextRequest) {
       experience_years: employee.experience_years,
       resume_url: employee.resume_url,
       college: employee.college,
-      degree: employee.degree,
       educational_stream: employee.educational_stream,
       status: employee.status,
       joined_on: employee.joined_on,
