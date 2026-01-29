@@ -59,7 +59,7 @@ export function ClientFormModal({
     try {
       const token = localStorage.getItem("auth_token");
 
-      const response = await fetch("/api/clients/create", {
+      const response = await fetch("/api/clients", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

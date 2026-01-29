@@ -34,11 +34,9 @@ async function handleCreate(req: NextRequest) {
   const body = await req.json();
   const { owner_id, entity_type, entity_id, description, due_on } = body;
 
-  // Validate required fields
+  // Validate required fields (entity_type and entity_id are now optional)
   const missingFields = validateRequiredFields(body, [
     "owner_id",
-    "entity_type",
-    "entity_id",
     "description",
     "due_on",
   ]);
@@ -109,27 +107,43 @@ async function handleList(req: NextRequest) {
   const owner_id = searchParams.get("owner_id");
   const entity_type = searchParams.get("entity_type");
   const status = searchParams.get("status");
+  const view = searchParams.get("view"); // my_tasks | assigned_by_me
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "10");
   const offset = (page - 1) * limit;
 
-  // Build where clause based on role
+  // Build where clause based on view parameter
   let whereConditions: any[] = [];
 
-  if (checkRole(user, ["employee"])) {
-    // Employee can only see their own tasks
+  if (view === "my_tasks") {
+    // Show only tasks where current user is the owner
     whereConditions.push(eq(schema.tasks.owner_id, user.id));
-  } else if (checkRole(user, ["project_manager"])) {
-    // PM can see team tasks or tasks they assigned
-    const teamMemberIds = await getPMTeamMemberIds(user.id);
-    whereConditions.push(
-      or(
-        inArray(schema.tasks.owner_id, teamMemberIds),
-        eq(schema.tasks.assigned_by, user.id),
-      ),
-    );
+  } else if (view === "assigned_by_me") {
+    // Show only tasks assigned by current user (PM/HR only)
+    if (
+      !checkRole(user, ["project_manager", "hr_executive"]) ||
+      user.id === null
+    ) {
+      return ErrorResponses.accessDenied();
+    }
+    whereConditions.push(eq(schema.tasks.assigned_by, user.id));
+  } else {
+    // Default behavior (backward compatible)
+    if (checkRole(user, ["employee"])) {
+      // Employee can only see their own tasks
+      whereConditions.push(eq(schema.tasks.owner_id, user.id));
+    } else if (checkRole(user, ["project_manager"])) {
+      // PM can see team tasks or tasks they assigned
+      const teamMemberIds = await getPMTeamMemberIds(user.id);
+      whereConditions.push(
+        or(
+          inArray(schema.tasks.owner_id, teamMemberIds),
+          eq(schema.tasks.assigned_by, user.id),
+        ),
+      );
+    }
+    // hr_executive can see all tasks
   }
-  // hr_executive can see all tasks
 
   // Apply filters
   if (owner_id) {
@@ -189,11 +203,15 @@ async function handleGet(req: NextRequest) {
   }
 
   // Get task with owner details
+  const ownerEmployee = schema.employees;
+  const assignedByEmployee = schema.employees;
+
   const [task] = await db
     .select({
       id: schema.tasks.id,
       owner_id: schema.tasks.owner_id,
-      owner_name: schema.employees.full_name,
+      owner_name: ownerEmployee.full_name,
+      owner_code: ownerEmployee.employee_code,
       entity_type: schema.tasks.entity_type,
       entity_id: schema.tasks.entity_id,
       description: schema.tasks.description,
@@ -203,33 +221,92 @@ async function handleGet(req: NextRequest) {
       created_at: schema.tasks.created_at,
     })
     .from(schema.tasks)
-    .innerJoin(schema.employees, eq(schema.tasks.owner_id, schema.employees.id))
+    .innerJoin(ownerEmployee, eq(schema.tasks.owner_id, ownerEmployee.id))
     .where(eq(schema.tasks.id, id));
 
   if (!task) {
     return ErrorResponses.notFound("Task");
   }
 
+  // Get assigned_by employee name separately (handle NULL for system tasks)
+  let assignedByName = "System";
+  if (task.assigned_by) {
+    const [assignedByEmp] = await db
+      .select({ full_name: schema.employees.full_name })
+      .from(schema.employees)
+      .where(eq(schema.employees.id, task.assigned_by));
+    assignedByName = assignedByEmp?.full_name || "System";
+  }
+
+  const taskWithAssigner = {
+    ...task,
+    assigned_by_name: assignedByName,
+  };
+
   // Check access based on role
   if (checkRole(user, ["employee"])) {
     // Employee can only view their own tasks
-    if (task.owner_id !== user.id) {
+    if (taskWithAssigner.owner_id !== user.id) {
       return ErrorResponses.accessDenied();
     }
   } else if (checkRole(user, ["project_manager"])) {
     // PM can view team tasks or tasks they assigned
-    const isTeamMember = await isInPMTeam(task.owner_id, user.id);
+    const isTeamMember = await isInPMTeam(taskWithAssigner.owner_id, user.id);
     if (
-      task.owner_id !== user.id &&
+      taskWithAssigner.owner_id !== user.id &&
       !isTeamMember &&
-      task.assigned_by !== user.id
+      taskWithAssigner.assigned_by !== user.id
     ) {
       return ErrorResponses.accessDenied();
     }
   }
   // hr_executive can view any task
 
-  return successResponse(task);
+  return successResponse({ task: taskWithAssigner });
+}
+
+// DELETE /api/tasks?id={id} - Delete task (HR only)
+async function handleDelete(req: NextRequest) {
+  const user = await getCurrentUser(req);
+
+  if (!checkRole(user, ["hr_executive"])) {
+    return ErrorResponses.accessDenied();
+  }
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+
+  if (!id) {
+    return ErrorResponses.badRequest("id is required");
+  }
+
+  // Get task first to check if it exists
+  const [task] = await db
+    .select()
+    .from(schema.tasks)
+    .where(eq(schema.tasks.id, id));
+
+  if (!task) {
+    return ErrorResponses.notFound("Task");
+  }
+
+  // Delete task
+  await db.delete(schema.tasks).where(eq(schema.tasks.id, id));
+
+  // Create audit log
+  await createAuditLog({
+    entity_type: "TASK",
+    entity_id: id,
+    operation: "DELETE",
+    changed_by: user.id,
+    changed_fields: {
+      description: task.description,
+      status: task.status,
+      owner_id: task.owner_id,
+    },
+  });
+
+  return successResponse({ id }, 200);
 }
 
 export async function POST(req: NextRequest) {
@@ -253,6 +330,15 @@ export async function GET(req: NextRequest) {
     }
   } catch (error) {
     console.error("Error fetching tasks:", error);
+    return ErrorResponses.internalError();
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    return await handleDelete(req);
+  } catch (error) {
+    console.error("Error deleting task:", error);
     return ErrorResponses.internalError();
   }
 }

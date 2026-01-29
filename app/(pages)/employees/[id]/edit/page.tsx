@@ -252,7 +252,7 @@ function EditEmployeeContent() {
       if (formData.educational_stream)
         payload.educational_stream = formData.educational_stream.trim();
 
-      const response = await fetch("/api/employees/update", {
+      const response = await fetch("/api/employees", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

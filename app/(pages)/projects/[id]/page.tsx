@@ -289,27 +289,28 @@ function ProjectDetailContent() {
               </Card>
             )}
 
-            {/* Placeholder for Team Allocations */}
+            {/* Team Allocations - Link to Filtered View */}
             <Card>
               <CardHeader>
                 <CardTitle>Team Allocations</CardTitle>
                 <CardDescription>
-                  Project team members and their allocation percentages
+                  View team members allocated to this project
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="text-sm">
-                    Team allocation details will be available once Phase 5
-                    (Resource Allocation) is implemented.
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mb-4">
+                    View detailed allocation information including team members,
+                    percentages, and timelines
                   </p>
                   <Button
-                    variant="outline"
-                    className="mt-4"
-                    onClick={() => router.push("/allocations")}
+                    onClick={() =>
+                      router.push(`/allocations?project=${projectId}`)
+                    }
                   >
-                    View All Allocations
+                    <Users className="h-4 w-4 mr-2" />
+                    View Project Allocations
                   </Button>
                 </div>
               </CardContent>
@@ -335,7 +336,9 @@ function ProjectDetailContent() {
                 <Button
                   variant="outline"
                   className="w-full justify-start"
-                  onClick={() => router.push("/allocations")}
+                  onClick={() =>
+                    router.push(`/allocations?project=${projectId}`)
+                  }
                 >
                   <Users className="h-4 w-4 mr-2" />
                   View Team Allocations
@@ -343,7 +346,7 @@ function ProjectDetailContent() {
                 <Button
                   variant="outline"
                   className="w-full justify-start"
-                  onClick={() => router.push("/logs")}
+                  onClick={() => router.push(`/logs?project=${projectId}`)}
                 >
                   <ClipboardList className="h-4 w-4 mr-2" />
                   View Work Logs
@@ -352,29 +355,12 @@ function ProjectDetailContent() {
                   <Button
                     variant="outline"
                     className="w-full justify-start"
-                    onClick={() => router.push("/demands")}
+                    onClick={() => router.push(`/demands?project=${projectId}`)}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     View Resource Demands
                   </Button>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Project Stats Placeholder */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Statistics</CardTitle>
-                <CardDescription>Coming soon</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                <ul className="list-disc list-inside space-y-1">
-                  <li>Total team members</li>
-                  <li>Total hours logged</li>
-                  <li>Phases completed</li>
-                  <li>Pending resource demands</li>
-                  <li>Project health status</li>
-                </ul>
               </CardContent>
             </Card>
           </div>

@@ -328,14 +328,12 @@ export const tasks = pgTable("tasks", {
   owner_id: uuid("owner_id")
     .notNull()
     .references(() => employees.id),
-  entity_id: uuid("entity_id").notNull(),
-  entity_type: entityTypeEnum("entity_type").notNull(),
+  entity_id: uuid("entity_id"),
+  entity_type: entityTypeEnum("entity_type"),
   description: text("description"),
   status: taskStatusEnum("status").notNull().default("DUE"),
   due_on: date("due_on"),
-  assigned_by: uuid("assigned_by")
-    .notNull()
-    .references(() => employees.id),
+  assigned_by: uuid("assigned_by").references(() => employees.id),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

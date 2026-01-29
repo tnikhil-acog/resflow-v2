@@ -29,7 +29,6 @@ interface AllocationFormData {
   allocation_percentage: string;
   role: string;
   is_billable: boolean;
-  is_critical_resource: boolean;
   start_date: string;
   end_date: string;
 }
@@ -244,25 +243,7 @@ export function AllocationFormFields({
             Check if this allocation is billable to the client
           </p>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="is_critical_resource"
-              checked={formData.is_critical_resource}
-              onCheckedChange={(checked) =>
-                onChange("is_critical_resource", checked === true)
-              }
-              disabled={disabled}
-            />
-            <Label
-              htmlFor="is_critical_resource"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-            >
-              Critical Resource
-            </Label>
-          </div>
-          <p className="text-xs text-muted-foreground ml-6">
-            Mark if this resource is critical for the project
-          </p>
+          {/* Removed critical resource flag (no longer in DB/schema) */}
         </div>
       </div>
     </div>

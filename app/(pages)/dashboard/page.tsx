@@ -410,42 +410,34 @@ export default function DashboardPage() {
                     No tasks available
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-[auto,1fr,auto,auto] gap-4 pb-2 border-b text-xs font-medium text-muted-foreground">
-                      <div className="w-6"></div>
-                      <div>Task ↕</div>
-                      <div>Project Name ↕</div>
-                      <div>Deadline ↕</div>
-                      <div>Status ↕</div>
-                    </div>
-
-                    {/* Table Rows */}
+                  <div className="space-y-2">
                     {recentTasks.slice(0, 6).map((task: any, idx: number) => (
                       <div
                         key={task.id || idx}
-                        className="grid grid-cols-[auto,1fr,auto,auto] gap-4 py-3 border-b last:border-0 items-center text-sm"
+                        className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                       >
-                        <Checkbox />
-                        <Link
-                          href={`/tasks/${task.id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {task.description || "No description"}
-                        </Link>
-                        <div className="text-muted-foreground">
-                          {task.project_name || "N/A"}
-                        </div>
-                        <div className="text-muted-foreground">
-                          {task.due_on
-                            ? new Date(task.due_on).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                },
-                              )
-                            : "No date"}
+                        <Checkbox className="mt-0.5" />
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <Link
+                            href={`/tasks/${task.id}`}
+                            className="text-sm font-medium text-primary hover:underline line-clamp-2"
+                          >
+                            {task.description || "No description"}
+                          </Link>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {task.due_on
+                                ? new Date(task.due_on).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                    },
+                                  )
+                                : "No date"}
+                            </div>
+                          </div>
                         </div>
                         <StatusBadge status={task.status || "DUE"} />
                       </div>
@@ -508,42 +500,34 @@ export default function DashboardPage() {
                     No tasks available
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-4 pb-2 border-b text-xs font-medium text-muted-foreground">
-                      <div className="w-6"></div>
-                      <div>Task ↕</div>
-                      <div>Project Name ↕</div>
-                      <div>Deadline ↕</div>
-                      <div>Status ↕</div>
-                    </div>
-
-                    {/* Table Rows */}
+                  <div className="space-y-2">
                     {recentTasks.slice(0, 6).map((task: any, idx: number) => (
                       <div
                         key={task.id || idx}
-                        className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-4 py-3 border-b last:border-0 items-center text-sm"
+                        className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                       >
-                        <Checkbox />
-                        <Link
-                          href={`/tasks/${task.id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {task.description || "No description"}
-                        </Link>
-                        <div className="text-muted-foreground">
-                          {task.project_name || "N/A"}
-                        </div>
-                        <div className="text-muted-foreground">
-                          {task.due_on
-                            ? new Date(task.due_on).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                },
-                              )
-                            : "No date"}
+                        <Checkbox className="mt-0.5" />
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <Link
+                            href={`/tasks/${task.id}`}
+                            className="text-sm font-medium text-primary hover:underline line-clamp-2"
+                          >
+                            {task.description || "No description"}
+                          </Link>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {task.due_on
+                                ? new Date(task.due_on).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                    },
+                                  )
+                                : "No date"}
+                            </div>
+                          </div>
                         </div>
                         <StatusBadge status={task.status || "DUE"} />
                       </div>
@@ -668,42 +652,34 @@ export default function DashboardPage() {
                     No tasks available
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-4 pb-2 border-b text-xs font-medium text-muted-foreground">
-                      <div className="w-6"></div>
-                      <div>Task ↕</div>
-                      <div>Project Name ↕</div>
-                      <div>Deadline ↕</div>
-                      <div>Status ↕</div>
-                    </div>
-
-                    {/* Table Rows */}
+                  <div className="space-y-2">
                     {recentTasks.slice(0, 5).map((task: any, idx: number) => (
                       <div
                         key={task.id || idx}
-                        className="grid grid-cols-[auto,1fr,auto,auto,auto] gap-4 py-3 border-b last:border-0 items-center text-sm"
+                        className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                       >
-                        <Checkbox />
-                        <Link
-                          href={`/tasks/${task.id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {task.description || "No description"}
-                        </Link>
-                        <div className="text-muted-foreground">
-                          {task.project_name || "N/A"}
-                        </div>
-                        <div className="text-muted-foreground">
-                          {task.due_on
-                            ? new Date(task.due_on).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                },
-                              )
-                            : "No date"}
+                        <Checkbox className="mt-0.5" />
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <Link
+                            href={`/tasks/${task.id}`}
+                            className="text-sm font-medium text-primary hover:underline line-clamp-2"
+                          >
+                            {task.description || "No description"}
+                          </Link>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {task.due_on
+                                ? new Date(task.due_on).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                    },
+                                  )
+                                : "No date"}
+                            </div>
+                          </div>
                         </div>
                         <StatusBadge status={task.status || "DUE"} />
                       </div>

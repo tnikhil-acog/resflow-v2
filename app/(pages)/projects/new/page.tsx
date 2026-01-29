@@ -102,7 +102,7 @@ function NewProjectContent() {
       if (empResponse.ok) {
         const empData = await empResponse.json();
         const managersList = (empData.employees || []).filter(
-          (emp: any) => emp.employee_role === "project_manager",
+          (emp: any) => emp.employee_role === "PM",
         );
         setManagers(managersList);
       }

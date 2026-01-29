@@ -76,7 +76,6 @@ export async function POST(req: NextRequest) {
           start_date: transferDateStr,
           end_date: oldAllocation.end_date,
           billability: oldAllocation.billability,
-          is_critical_resource: oldAllocation.is_critical_resource,
           assigned_by: user.id,
         })
         .returning();

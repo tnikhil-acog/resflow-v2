@@ -36,7 +36,6 @@ interface Allocation {
   allocation_percentage: number;
   role: string;
   is_billable: boolean;
-  is_critical_resource: boolean;
   start_date: string;
   end_date?: string;
 }
@@ -182,16 +181,7 @@ function AllocationsListContent() {
         </Badge>
       ),
     },
-    {
-      key: "critical",
-      header: "Critical",
-      render: (a) =>
-        a.is_critical_resource ? (
-          <Badge variant="destructive">Critical</Badge>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        ),
-    },
+    // 'Critical' column removed (no longer supported by DB)
     {
       key: "dates",
       header: "Duration",

@@ -37,7 +37,6 @@ interface AllocationFormData {
   start_date: string;
   end_date: string;
   is_billable: boolean;
-  is_critical_resource: boolean;
 }
 
 interface FormErrors {
@@ -76,7 +75,7 @@ function CreateAllocationContent() {
     start_date: "",
     end_date: "",
     is_billable: false,
-    is_critical_resource: false,
+    // removed is_critical_resource
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -230,7 +229,6 @@ function CreateAllocationContent() {
           start_date: formData.start_date,
           end_date: formData.end_date || null,
           is_billable: formData.is_billable,
-          is_critical_resource: formData.is_critical_resource,
         }),
       });
 

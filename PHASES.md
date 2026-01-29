@@ -511,66 +511,164 @@ This document outlines the strategic development flow for creating all 30 UI pag
 
 ---
 
-## Phase 7: Task Management 🔄 PENDING
+## Phase 7: Task Management ✅ COMPLETED
 
 **Goal:** Implement task tracking and completion
 
 ### Pages to Build
 
 1. ✅ **Tasks List Page** (`/tasks`)
-   - Role-based filtering
-   - Filter: owner, status, entity_type
-   - PM/HR: Create Task button
+   - **Two Tab Views** for clear task separation:
+     - **"My Tasks"** tab: Shows tasks where user is owner (tasks I need to complete)
+     - **"Tasks I Assigned"** tab: Shows tasks user created for others (PM/HR only)
+   - **Different table columns per tab**:
+     - My Tasks: Task, Entity Type, Assigned To, Deadline, Status
+     - Tasks I Assigned: Owner, Task Description, Status, Due Date
+   - Filter: search, status (works on both tabs)
+   - PM/HR: Create Task button (role-based visibility)
    - Mark Complete action
+   - List and Grid view modes (per tab)
 
-2. ⏳ **Task Detail Page** (`/tasks/[id]`)
-   - View task details
-   - Mark complete button
-   - HR: Delete action
+2. ✅ **Task Create Page** (`/tasks/new`) (PM/HR only)
+   - **Simplified form** for manual task creation
+   - Owner selection from employees dropdown
+   - Description textarea with examples
+   - Due date picker (with min date validation)
+   - **No entity fields required** - simple to-do tasks
+   - Form validation for all required fields
+
+3. ✅ **Task Detail Page** (`/tasks/[id]`)
+   - View complete task details with metadata
+   - Card-based layout showing: description, due date, owner, assigned by
+   - **Conditional entity display** - only shown if task has entity reference (system tasks)
+   - Mark complete button (owner or HR, only for DUE tasks)
+   - HR: Delete action with confirmation dialog
+   - Role-based access control
+
+**Features Implemented:**
+
+- **Tab-Based Task Separation**: "My Tasks" vs "Tasks I Assigned" tabs prevent confusion
+- **API View Filtering**: GET /api/tasks?view=my_tasks|assigned_by_me for tab-specific data
+- **Role-Based Tab Visibility**: "Tasks I Assigned" tab only shown to PM/HR roles
+- **Simplified Task Creation**: 3 fields only (owner, description, due date) for manual tasks
+- **System Task Support**: Entity fields nullable for system-generated tasks with references
+- **assigned_by Nullable**: NULL for system tasks, shows "System" in UI
+- **Role-Based Access**: PM/HR only can create tasks, button visible only to authorized roles
+- **Task Detail View**: Complete task details in organized card layout
+- **Conditional Rendering**: Entity section only shown for tasks with entity references
+- **Mark Complete**: Functionality using PATCH /api/tasks/complete endpoint
+- **Delete Task**: HR-only delete with DELETE /api/tasks endpoint
+- **Status Badges**: DUE (orange), COMPLETED (green)
+- **Owner/Assigner Info**: Employee code and full name display, "System" for null assigned_by
+- **Validation**: Form validation, date validation (min date = today)
+- **Loading States**: For all data fetching and form submission
+- **Toast Notifications**: Success/error feedback for all actions
+- **Navigation**: Breadcrumb navigation, redirect to detail page after creation
+
+**Schema Changes:**
+
+- Made `entity_id`, `entity_type`, and `assigned_by` nullable in tasks table
+- Migration script: `migrations/0003_make_tasks_fields_nullable.sql`
+- Allows manual tasks without entity references
+- Allows system tasks without assigned_by employee
+
+**API Enhancements:**
+
+- Removed entity_type and entity_id from required POST validation
+- Added DELETE /api/tasks?id={id} endpoint for HR to delete tasks
+- Enhanced GET /api/tasks?id={id} to include owner_code and assigned_by_name
+- Handles NULL assigned_by gracefully (shows "System")
+- Audit logging for delete operations
 
 **Dependencies:**
 
-- Employees, Projects (for entity references)
+- ✅ Employees (for task owner selection)
 
-**Status:** 🔄 **PARTIAL** (1/2 pages - List exists in dashboard)
+**Status:** ✅ **COMPLETED** (3/3 pages)
 
 ---
 
-## Phase 8: Resource Requests & Approvals 🔄 PENDING
+## Phase 8: Resource Requests & Approvals ✅ COMPLETED
 
 **Goal:** Implement resource demand management and approval workflows
 
+### Components Created
+
+1. ✅ **DemandFormFields Component** (`components/forms/demand-form-fields.tsx`)
+   - Reusable form for create and edit pages
+   - Project selection dropdown (disabled in edit mode)
+   - Role required text input
+   - Skills multi-select with badge display
+   - Start date picker
+   - Selected skills shown as removable badges
+
+### Pages Built
+
 ### 8.1 Demand Management (PM + HR)
 
-1. ⏳ **Demands List Page** (`/demands`)
-   - PM: Own demands only
-   - HR: All demands
-   - Filter: project, status, requested_by
+1. ✅ **Demands List Page** (`/demands`)
+   - Role-based access: PM sees own demands, HR sees all
+   - Filters: Project, Status (REQUESTED/FULFILLED/CANCELLED), Requested By (HR only)
+   - DataTable with columns: project code/name, role required, skills badges, start date, requested by, status badge
+   - Search by project name, code, or role
+   - PM/HR Create button
+   - Click row to view details
 
-2. ⏳ **Demand Create Page** (`/demands/new`)
-   - Project dropdown (PM: managed only)
-   - Role required, skills multi-select
-   - Start/End dates
+2. ✅ **Demand Create Page** (`/demands/new`) (PM + HR)
+   - Uses DemandFormFields component
+   - PM can select only their managed active projects
+   - HR can select any active project
+   - Role required input
+   - Skills multi-select dropdown
+   - Start date validation
+   - Form validation with error display
+   - API: POST /api/demands with skill_ids array
 
-3. ⏳ **Demand Detail Page** (`/demands/[id]`)
-   - View demand details
-   - HR: Fulfill/Cancel actions
+3. ✅ **Demand Detail Page** (`/demands/[id]`) (PM + HR)
+   - View mode: Shows project info, demand details (role, skills, start date), request information (requested by, date)
+   - Edit mode: PM can edit REQUESTED status demands (own projects), HR can edit any REQUESTED demand
+   - Uses DemandFormFields with project disabled
+   - HR-only actions: Fulfill/Cancel buttons for REQUESTED demands
+   - Status badge with color coding
+   - Card-based layout
 
 ### 8.2 Approvals (PM + HR)
 
-4. ⏳ **Approvals Page** (`/approvals`)
-   - **Tab 1: Skill Requests** (PM: team only, HR: all)
-     - Approve/Reject skill requests
+4. ✅ **Approvals Page** (`/approvals`)
+   - Tab-based interface with badge counters
+   - **Tab 1: Skill Requests**
+     - PM: Sees pending requests from team members only
+     - HR: Sees all pending skill requests
+     - DataTable with: employee code/name, skill name, proficiency badge, requested date
+     - Approve/Reject actions inline
+     - API: PUT /api/employee-skills for approval
    - **Tab 2: Demands** (HR only)
-     - Fulfill/Cancel demand requests
+     - Shows all REQUESTED demands
+     - DataTable with: project code/name, role, skills badges, start date, requested by
+     - Fulfill/Cancel actions inline
+     - Click row to view full details
+     - API: PUT /api/demands for status updates
+   - Real-time updates after actions
+   - Empty state messages
+
+### Key Features Implemented
+
+- ✅ **Role-Based Demand Creation:** PM can create for managed projects, HR for any project
+- ✅ **Skills Multi-Select:** Dynamic badge-based skill selection with department display
+- ✅ **Approval Workflows:** Separate tabs for skill requests and demands with inline actions
+- ✅ **Status Management:** Color-coded badges for REQUESTED/FULFILLED/CANCELLED
+- ✅ **Edit Restrictions:** PM can only edit REQUESTED demands for own projects
+- ✅ **Comprehensive Filtering:** Multi-dimensional filters by project, status, requester
+- ✅ **Professional UI:** Tabs with counters, inline actions, responsive design
+- ✅ **Team-Based Access:** PM sees only their team's skill requests
 
 **Dependencies:**
 
-- Projects (Phase 4)
-- Skills (Phase 2)
-- Employees (Phase 3)
+- ✅ Projects (Phase 4) - For project selection and display
+- ✅ Skills (Phase 2) - For skills multi-select
+- ✅ Employees (Phase 3) - For requester information
 
-**Status:** ⏳ **NOT STARTED** (0/4 pages)
+**Status:** ✅ **COMPLETED** (4/4 pages + 1 component, 100%)
 
 ---
 
@@ -614,24 +712,39 @@ This document outlines the strategic development flow for creating all 30 UI pag
 
 ---
 
-## Phase 10: Audit & Compliance (HR Executive Only) 🔄 PENDING
+## Phase 10: Audit & Compliance (HR Executive Only) ✅ COMPLETED
 
 **Goal:** Implement audit trail for compliance and tracking
 
 ### Pages to Build
 
-1. ⏳ **Audit Page** (`/audit`) (HR only)
-   - View all system changes
-   - Filter by: entity_type, operation, user, date range
-   - Expandable changed fields display
+1. ✅ **Audit Page** (`/audit`) (HR only)
+   - View all system changes with comprehensive filters
+   - Filter by: entity_type (16 types), operation (INSERT/UPDATE/DELETE), user, date range
+   - Expandable rows showing changed_fields JSON formatted
+   - Table with badges for entity types and operations
    - Pagination (20 items per page)
+   - Clear filters functionality
+   - Full audit log display with timestamps
+
+**Features Implemented:**
+
+- HR-only access via ProtectedRoute
+- 16 entity type filters: EMPLOYEE, DEPARTMENT, CLIENT, PROJECT, PROJECT_ALLOCATION, SKILL, EMPLOYEE_SKILL, DEMAND, DEMAND_SKILL, REPORT, TASK, PHASE, PHASE_REPORT, DAILY_PROJECT_LOG, ATTRIBUTE, ATTRIBUTE_VALUE
+- Operation filtering: INSERT, UPDATE, DELETE with color-coded badges
+- User dropdown populated from employees
+- Date range filtering (start date/end date)
+- Expandable rows with chevron indicators showing JSONB changed_fields
+- Formatted JSON display in pre blocks
+- Pagination controls with page counter
+- Shows audit trail with: entity type, entity ID (truncated), operation, changed by name, changed at timestamp
 
 **Dependencies:**
 
-- Audit triggers on all tables (database level)
-- All other modules (audit tracks changes across system)
+- ✅ Audit triggers on all tables (database level)
+- ✅ All other modules (audit tracks changes across system)
 
-**Status:** ⏳ **NOT STARTED** (0/1 pages)
+**Status:** ✅ **COMPLETED** (1/1 pages)
 
 ---
 
@@ -639,10 +752,10 @@ This document outlines the strategic development flow for creating all 30 UI pag
 
 ### Overall Progress
 
-- **Total Pages:** 30
-- **Completed:** 18 pages (60%)
+- **Total Pages:** 31
+- **Completed:** 25 pages (81%)
 - **In Progress:** 0 pages
-- **Pending:** 12 pages (40%)
+- **Pending:** 6 pages (19%)
 
 ### Phase Status
 
@@ -655,10 +768,10 @@ This document outlines the strategic development flow for creating all 30 UI pag
 | 4     | Project Management    | ✅ COMPLETED   | 80% (4/5)             |
 | 5     | Resource Allocation   | ✅ COMPLETED   | 100% (3/3)            |
 | 6     | Time Tracking         | ⏳ NOT STARTED | 0% (0/6)              |
-| 7     | Task Management       | 🔄 PARTIAL     | 50% (1/2)             |
-| 8     | Demands & Approvals   | ⏳ NOT STARTED | 0% (0/4)              |
+| 7     | Task Management       | ✅ COMPLETED   | 100% (3/3)            |
+| 8     | Demands & Approvals   | ✅ COMPLETED   | 100% (4/4)            |
 | 9     | Dashboard Enhancement | ✅ COMPLETED   | 100% (API integrated) |
-| 10    | Audit & Compliance    | ⏳ NOT STARTED | 0% (0/1)              |
+| 10    | Audit & Compliance    | ✅ COMPLETED   | 100% (1/1)            |
 
 ### Detailed Component Status
 
@@ -688,10 +801,11 @@ This document outlines the strategic development flow for creating all 30 UI pag
 
 **Phase 5: Resource Allocation** 29. Allocations List Page with project/employee/active filters and DataTable 30. Allocation Create Page (HR only) with capacity validation 31. Allocation Detail/Edit Page with read-only employee/project fields 32. AllocationFormFields reusable component with capacity warnings
 
-#### 🔄 Partially Completed
+**Phase 8: Demands & Approvals** 33. Demands List Page with project/status/requester filters (PM: own, HR: all) 34. Demand Create Page with skills multi-select (PM: managed projects, HR: all) 35. Demand Detail/Edit Page with Fulfill/Cancel actions (HR only) 36. Approvals Page with tabs for Skill Requests and Demands (role-based) 37. DemandFormFields reusable component with skills badges
 
-- Dashboard metrics (✅ UI done, ✅ API integrated, ✅ Data properly mapped)
-- Tasks list (shown in dashboard, dedicated page needed)
+**Phase 7: Task Management** 38. Tasks List Page with role-based filtering (Employee: own, PM: team, HR: all), list/grid views, status filters, PM/HR Create button 39. Task Create Page (PM/HR only) - **SIMPLIFIED** to 3 fields (owner, description, due date) for manual tasks, no entity fields 40. Task Detail Page with card layout, mark complete button (owner/HR), HR delete with confirmation, conditional entity display (system tasks only)
+
+**Phase 10: Audit & Compliance** 41. Audit Trail Page (HR only) with 16 entity type filters, operation filters, user filters, date range, expandable JSONB changed_fields display, pagination (20/page)
 
 #### ⏳ Next Priority (Phase 6 - Time Tracking)
 

@@ -428,25 +428,6 @@ function EmployeeProfileContent() {
                 </Button>
               </CardContent>
             </Card>
-
-            {/* Placeholder for future sections */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Coming Soon</CardTitle>
-                <CardDescription>
-                  Additional sections will be added
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                <ul className="list-disc list-inside space-y-1">
-                  <li>Active project allocations</li>
-                  <li>Recent work logs summary</li>
-                  <li>Submitted reports</li>
-                  <li>Skills and proficiency</li>
-                  <li>Assigned tasks</li>
-                </ul>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>

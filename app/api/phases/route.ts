@@ -43,7 +43,7 @@ import {
   validateRequiredFields,
   successResponse,
 } from "@/lib/api-helpers";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -140,8 +140,8 @@ export async function GET(req: NextRequest) {
     }
     // hr_executive can access any project
 
-    // Get phases with project info
-    const phases = await db
+    // Get phases with project info and phase reports
+    const phasesData = await db
       .select({
         id: schema.phases.id,
         project_id: schema.phases.project_id,
@@ -158,7 +158,40 @@ export async function GET(req: NextRequest) {
       )
       .where(eq(schema.phases.project_id, project_id));
 
-    return successResponse({ phases });
+    // Get phase reports for all phases
+    const phaseIds = phasesData.map((p) => p.id);
+    let reportsData: any[] = [];
+    if (phaseIds.length > 0) {
+      reportsData = await db
+        .select({
+          id: schema.phaseReports.id,
+          phase_id: schema.phaseReports.phase_id,
+          content: schema.phaseReports.content,
+          submitted_by: schema.phaseReports.submitted_by,
+          submitted_at: schema.phaseReports.submitted_at,
+          submitter: {
+            id: schema.employees.id,
+            employee_name: schema.employees.full_name,
+            employee_code: schema.employees.employee_code,
+          },
+        })
+        .from(schema.phaseReports)
+        .innerJoin(
+          schema.employees,
+          eq(schema.phaseReports.submitted_by, schema.employees.id),
+        )
+        .where(
+          sql`${schema.phaseReports.phase_id} IN (${phaseIds.join(", ")})`,
+        );
+    }
+
+    // Combine phases with their reports
+    const phases = phasesData.map((phase) => ({
+      ...phase,
+      reports: reportsData.filter((r) => r.phase_id === phase.id),
+    }));
+
+    return successResponse(phases);
   } catch (error) {
     console.error("Error fetching phases:", error);
     return ErrorResponses.internalError();

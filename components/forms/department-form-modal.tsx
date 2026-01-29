@@ -73,9 +73,6 @@ export function DepartmentFormModal({
 
     try {
       const token = localStorage.getItem("auth_token");
-      const url = isEdit
-        ? "/api/departments/update"
-        : "/api/departments/create";
 
       const payload: any = {
         name: name.trim(),
@@ -89,7 +86,7 @@ export function DepartmentFormModal({
         payload.id = department.id;
       }
 
-      const response = await fetch(url, {
+      const response = await fetch("/api/departments", {
         method: isEdit ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",

@@ -42,7 +42,6 @@ interface Allocation {
   allocation_percentage: number;
   role: string;
   is_billable: boolean;
-  is_critical_resource: boolean;
   start_date: string;
   end_date?: string;
 }
@@ -55,7 +54,6 @@ interface AllocationFormData {
   start_date: string;
   end_date: string;
   is_billable: boolean;
-  is_critical_resource: boolean;
 }
 
 interface FormErrors {
@@ -99,7 +97,7 @@ function AllocationDetailContent() {
     start_date: "",
     end_date: "",
     is_billable: false,
-    is_critical_resource: false,
+    // removed is_critical_resource
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -148,7 +146,6 @@ function AllocationDetailContent() {
         start_date: data.allocation.start_date,
         end_date: data.allocation.end_date || "",
         is_billable: data.allocation.is_billable,
-        is_critical_resource: data.allocation.is_critical_resource,
       });
     } catch (error) {
       console.error("Error fetching allocation:", error);
@@ -274,7 +271,6 @@ function AllocationDetailContent() {
           start_date: formData.start_date,
           end_date: formData.end_date || null,
           is_billable: formData.is_billable,
-          is_critical_resource: formData.is_critical_resource,
         }),
       });
 
@@ -307,7 +303,6 @@ function AllocationDetailContent() {
         start_date: allocation.start_date,
         end_date: allocation.end_date || "",
         is_billable: allocation.is_billable,
-        is_critical_resource: allocation.is_critical_resource,
       });
     }
     setErrors({});
@@ -427,18 +422,6 @@ function AllocationDetailContent() {
                       >
                         {allocation.is_billable ? "Yes" : "No"}
                       </Badge>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">
-                        Critical Resource
-                      </div>
-                      {allocation.is_critical_resource ? (
-                        <Badge variant="destructive" className="mt-1">
-                          Critical
-                        </Badge>
-                      ) : (
-                        <div className="text-muted-foreground mt-1">-</div>
-                      )}
                     </div>
                   </div>
                 </CardContent>

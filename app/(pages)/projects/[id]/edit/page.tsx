@@ -238,7 +238,7 @@ function EditProjectContent() {
         payload.started_on = formData.started_on;
       }
 
-      const response = await fetch("/api/projects/update", {
+      const response = await fetch("/api/projects", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

@@ -166,24 +166,36 @@ async function handleList(req: NextRequest) {
   // Get total count
   const total = await getCount(schema.dailyProjectLogs, whereClause);
 
-  // Get logs with project details
+  // Get logs with project and employee details
   const baseQuery = db
     .select({
       id: schema.dailyProjectLogs.id,
       emp_id: schema.dailyProjectLogs.emp_id,
       project_id: schema.dailyProjectLogs.project_id,
-      project_code: schema.projects.project_code,
-      project_name: schema.projects.project_name,
       log_date: schema.dailyProjectLogs.log_date,
       hours: schema.dailyProjectLogs.hours,
       notes: schema.dailyProjectLogs.notes,
       locked: schema.dailyProjectLogs.locked,
       created_at: schema.dailyProjectLogs.created_at,
+      project: {
+        id: schema.projects.id,
+        project_code: schema.projects.project_code,
+        project_name: schema.projects.project_name,
+      },
+      employee: {
+        id: schema.employees.id,
+        employee_name: schema.employees.full_name,
+        employee_code: schema.employees.employee_code,
+      },
     })
     .from(schema.dailyProjectLogs)
     .innerJoin(
       schema.projects,
       eq(schema.dailyProjectLogs.project_id, schema.projects.id),
+    )
+    .innerJoin(
+      schema.employees,
+      eq(schema.dailyProjectLogs.emp_id, schema.employees.id),
     )
     .limit(limit)
     .offset(offset);

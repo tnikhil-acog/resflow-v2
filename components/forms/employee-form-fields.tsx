@@ -196,9 +196,9 @@ export function EmployeeFormFields({
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Full-Time">Full-Time</SelectItem>
-                <SelectItem value="Contract">Contract</SelectItem>
-                <SelectItem value="Intern">Intern</SelectItem>
+                <SelectItem value="FTE">Full-Time</SelectItem>
+                <SelectItem value="Trainee">Trainee</SelectItem>
+                <SelectItem value="INTERN">Intern</SelectItem>
               </SelectContent>
             </Select>
             {errors.employee_type && (
@@ -219,9 +219,9 @@ export function EmployeeFormFields({
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="employee">Employee</SelectItem>
-                <SelectItem value="project_manager">Project Manager</SelectItem>
-                <SelectItem value="hr_executive">HR Executive</SelectItem>
+                <SelectItem value="EMP">Employee</SelectItem>
+                <SelectItem value="PM">Project Manager</SelectItem>
+                <SelectItem value="HR">HR Executive</SelectItem>
               </SelectContent>
             </Select>
             {errors.employee_role && (

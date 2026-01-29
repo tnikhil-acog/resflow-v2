@@ -18,7 +18,7 @@ import { LoadingSpinner } from "@/components/loading-spinner";
 interface Department {
   id: string;
   name: string;
-  designations: string[];
+  designations: string | null;
   created_at: string;
 }
 
@@ -66,7 +66,7 @@ export function DepartmentsTab() {
     setSelectedDepartment({
       id: department.id,
       name: department.name,
-      designations: department.designations.join(", "),
+      designations: department.designations || "",
     });
     setModalOpen(true);
   };
@@ -89,8 +89,8 @@ export function DepartmentsTab() {
       key: "designations",
       header: "Designations",
       render: (dept) =>
-        dept.designations && dept.designations.length > 0
-          ? dept.designations.join(", ")
+        dept.designations && dept.designations.trim()
+          ? dept.designations
           : "No designations",
     },
     {

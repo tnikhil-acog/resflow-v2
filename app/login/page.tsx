@@ -29,7 +29,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      const redirect = searchParams.get("redirect") || "/dashboard";
+      const redirect = searchParams.get("redirect") || "/tasks";
       router.push(redirect);
     }
   }, [isAuthenticated, router, searchParams]);

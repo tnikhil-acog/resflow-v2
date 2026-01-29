@@ -26,11 +26,17 @@ async function handleCreate(req: NextRequest) {
   const user = await getCurrentUser(req);
 
   const body = await req.json();
-  const { emp_id, report_type, week_start_date, week_end_date, content } = body;
+  const {
+    report_type,
+    week_start_date,
+    week_end_date,
+    report_date,
+    content,
+    weekly_hours,
+  } = body;
 
   // Validate required fields
   const missingFields = validateRequiredFields(body, [
-    "emp_id",
     "report_type",
     "content",
   ]);
@@ -38,12 +44,8 @@ async function handleCreate(req: NextRequest) {
     return ErrorResponses.badRequest(missingFields);
   }
 
-  // Access control: can only create for themselves
-  if (emp_id !== user.id) {
-    return ErrorResponses.badRequest(
-      "Cannot create reports for other employees",
-    );
-  }
+  // Use authenticated user's ID
+  const emp_id = user.id;
 
   // Validate report_type and date fields
   if (report_type === "WEEKLY") {
@@ -53,7 +55,11 @@ async function handleCreate(req: NextRequest) {
       );
     }
   } else if (report_type === "DAILY") {
-    // Daily reports don't require date range
+    if (!report_date) {
+      return ErrorResponses.badRequest(
+        "report_date is required for DAILY reports",
+      );
+    }
   } else {
     return ErrorResponses.badRequest("Invalid report_type");
   }
@@ -79,46 +85,52 @@ async function handleCreate(req: NextRequest) {
     }
   }
 
-  // Aggregate weekly_hours from daily logs for WEEKLY reports
-  let weekly_hours: Record<string, number> | null = null;
+  // Use provided weekly_hours or aggregate from daily logs for WEEKLY reports
+  let finalWeeklyHours: Record<string, number> | null = null;
   if (report_type === "WEEKLY") {
-    const aggregatedLogs = await db
-      .select({
-        project_code: schema.projects.project_code,
-        total_hours: sql<string>`SUM(${schema.dailyProjectLogs.hours})`,
-      })
-      .from(schema.dailyProjectLogs)
-      .innerJoin(
-        schema.projects,
-        eq(schema.dailyProjectLogs.project_id, schema.projects.id),
-      )
-      .where(
-        and(
-          eq(schema.dailyProjectLogs.emp_id, emp_id),
-          gte(schema.dailyProjectLogs.log_date, week_start_date),
-          lte(schema.dailyProjectLogs.log_date, week_end_date),
-          eq(schema.dailyProjectLogs.locked, false),
-        ),
-      )
-      .groupBy(schema.projects.project_code);
+    if (weekly_hours && Object.keys(weekly_hours).length > 0) {
+      // Use provided weekly_hours
+      finalWeeklyHours = weekly_hours;
+    } else {
+      // Aggregate from daily logs
+      const aggregatedLogs = await db
+        .select({
+          project_code: schema.projects.project_code,
+          total_hours: sql<string>`SUM(${schema.dailyProjectLogs.hours})`,
+        })
+        .from(schema.dailyProjectLogs)
+        .innerJoin(
+          schema.projects,
+          eq(schema.dailyProjectLogs.project_id, schema.projects.id),
+        )
+        .where(
+          and(
+            eq(schema.dailyProjectLogs.emp_id, emp_id),
+            gte(schema.dailyProjectLogs.log_date, week_start_date),
+            lte(schema.dailyProjectLogs.log_date, week_end_date),
+            eq(schema.dailyProjectLogs.locked, false),
+          ),
+        )
+        .groupBy(schema.projects.project_code);
 
-    weekly_hours = {};
-    for (const log of aggregatedLogs) {
-      weekly_hours[log.project_code] = parseFloat(log.total_hours);
+      finalWeeklyHours = {};
+      for (const log of aggregatedLogs) {
+        finalWeeklyHours[log.project_code] = parseFloat(log.total_hours);
+      }
     }
   }
 
-  // Insert report (DRAFT status - report_date is NULL)
+  // Insert report
   const [report] = await db
     .insert(schema.reports)
     .values({
       emp_id,
       report_type,
-      report_date: null,
+      report_date: report_date || null,
       week_start_date: week_start_date || null,
       week_end_date: week_end_date || null,
       content,
-      weekly_hours: weekly_hours as any,
+      weekly_hours: finalWeeklyHours as any,
     })
     .returning();
 
@@ -131,6 +143,7 @@ async function handleCreate(req: NextRequest) {
     changed_fields: {
       emp_id,
       report_type,
+      report_date,
       week_start_date,
       week_end_date,
       content,
@@ -212,8 +225,6 @@ async function handleList(req: NextRequest) {
     .select({
       id: schema.reports.id,
       emp_id: schema.reports.emp_id,
-      employee_code: schema.employees.employee_code,
-      employee_name: schema.employees.full_name,
       report_type: schema.reports.report_type,
       report_date: schema.reports.report_date,
       week_start_date: schema.reports.week_start_date,
@@ -221,21 +232,21 @@ async function handleList(req: NextRequest) {
       content: schema.reports.content,
       weekly_hours: schema.reports.weekly_hours,
       created_at: schema.reports.created_at,
+      updated_at: schema.reports.updated_at,
+      employee: {
+        id: schema.employees.id,
+        employee_name: schema.employees.full_name,
+        employee_code: schema.employees.employee_code,
+      },
     })
     .from(schema.reports)
     .innerJoin(schema.employees, eq(schema.reports.emp_id, schema.employees.id))
     .limit(limit)
     .offset(offset);
 
-  const reportsData = whereClause
+  const reports = whereClause
     ? await baseQuery.where(whereClause)
     : await baseQuery;
-
-  // Add computed status
-  const reports = reportsData.map((r) => ({
-    ...r,
-    status: r.report_date ? "SUBMITTED" : "DRAFT",
-  }));
 
   return successResponse({ reports, total, page, limit });
 }
