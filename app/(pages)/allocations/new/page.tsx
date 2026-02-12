@@ -31,12 +31,14 @@ interface Project {
 
 interface AllocationFormData {
   employee_id: string | undefined;
+  employee_ids: string[];
   project_id: string | undefined;
   allocation_percentage: string;
   role: string;
   start_date: string;
   end_date: string;
   is_billable: boolean;
+  bulk_mode: boolean;
 }
 
 interface FormErrors {
@@ -69,13 +71,14 @@ function CreateAllocationContent() {
 
   const [formData, setFormData] = useState<AllocationFormData>({
     employee_id: undefined,
+    employee_ids: [],
     project_id: undefined,
     allocation_percentage: "",
     role: "",
     start_date: "",
     end_date: "",
     is_billable: false,
-    // removed is_critical_resource
+    bulk_mode: false,
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -106,12 +109,17 @@ function CreateAllocationContent() {
   const fetchEmployees = async () => {
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees", {
+      // Fetch all active employees with high limit
+      const response = await fetch("/api/employees?limit=999&status=ACTIVE", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
         const data = await response.json();
+        console.log(
+          "Fetched employees for allocation:",
+          data.employees?.length || 0,
+        );
         setEmployees(data.employees || []);
       }
     } catch (error) {
@@ -123,14 +131,20 @@ function CreateAllocationContent() {
   const fetchProjects = async () => {
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/projects", {
+      // Fetch all active projects with high limit
+      const response = await fetch("/api/projects?limit=999", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
         const data = await response.json();
+        // Filter to only show ACTIVE projects (using uppercase to match enum)
         const activeProjects = (data.projects || []).filter(
-          (p: Project) => p.status === "active",
+          (p: Project) => p.status === "ACTIVE",
+        );
+        console.log(
+          "Fetched active projects for allocation:",
+          activeProjects.length,
         );
         setProjects(activeProjects);
       }
@@ -159,7 +173,7 @@ function CreateAllocationContent() {
     }
   };
 
-  const handleChange = (field: string, value: string | boolean) => {
+  const handleChange = (field: string, value: string | boolean | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field as keyof FormErrors]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -169,7 +183,17 @@ function CreateAllocationContent() {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
-    if (!formData.employee_id) newErrors.employee_id = "Employee is required";
+    // Validate employee selection based on mode
+    if (formData.bulk_mode) {
+      if (!formData.employee_ids || formData.employee_ids.length === 0) {
+        newErrors.employee_id = "At least one employee is required";
+      }
+    } else {
+      if (!formData.employee_id) {
+        newErrors.employee_id = "Employee is required";
+      }
+    }
+
     if (!formData.project_id) newErrors.project_id = "Project is required";
 
     const percentage = parseFloat(formData.allocation_percentage);
@@ -203,7 +227,13 @@ function CreateAllocationContent() {
     }
 
     const percentage = parseFloat(formData.allocation_percentage);
-    if (remainingCapacity !== null && percentage > remainingCapacity) {
+
+    // For single mode, check capacity
+    if (
+      !formData.bulk_mode &&
+      remainingCapacity !== null &&
+      percentage > remainingCapacity
+    ) {
       toast.error(
         `Employee capacity exceeded. Available: ${remainingCapacity}%, Requested: ${percentage}%`,
       );
@@ -214,22 +244,32 @@ function CreateAllocationContent() {
 
     try {
       const token = localStorage.getItem("auth_token");
+
+      // Build payload based on mode
+      const payload: any = {
+        action: "create",
+        project_id: formData.project_id,
+        allocation_percentage: percentage,
+        role: formData.role,
+        start_date: formData.start_date,
+        end_date: formData.end_date || null,
+        billability: formData.is_billable,
+      };
+
+      // Add employee ID(s) based on mode
+      if (formData.bulk_mode) {
+        payload.emp_ids = formData.employee_ids;
+      } else {
+        payload.emp_id = formData.employee_id;
+      }
+
       const response = await fetch("/api/allocations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          action: "create",
-          emp_id: formData.employee_id,
-          project_id: formData.project_id,
-          allocation_percentage: percentage,
-          role: formData.role,
-          start_date: formData.start_date,
-          end_date: formData.end_date || null,
-          is_billable: formData.is_billable,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -238,7 +278,24 @@ function CreateAllocationContent() {
         throw new Error(data.error || "Failed to create allocation");
       }
 
-      toast.success("Allocation created successfully");
+      // Handle bulk response
+      if (formData.bulk_mode) {
+        const successCount = data.created || 0;
+        const failCount = data.failed || 0;
+
+        if (failCount > 0) {
+          toast.warning(
+            `${successCount} allocation(s) created, ${failCount} failed. Check console for details.`,
+            { duration: 5000 },
+          );
+          console.log("Failed allocations:", data.errors);
+        } else {
+          toast.success(`${successCount} allocation(s) created successfully!`);
+        }
+      } else {
+        toast.success("Allocation created successfully");
+      }
+
       router.push("/allocations");
     } catch (error) {
       console.error("Error creating allocation:", error);

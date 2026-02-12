@@ -3,13 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ProjectCombobox } from "@/components/project-combobox";
 
 interface Project {
   id: string;
@@ -50,22 +44,12 @@ export function LogFormFields({
           <Label htmlFor="project_id">
             Project <span className="text-destructive">*</span>
           </Label>
-          <Select
+          <ProjectCombobox
             value={formData.project_id || undefined}
             onValueChange={(value) => onChange("project_id", value)}
-            disabled={isEdit || disabled || locked}
-          >
-            <SelectTrigger id="project_id">
-              <SelectValue placeholder="Select project" />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.project_code} - {project.project_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            placeholder="Search and select project..."
+            className={isEdit || disabled || locked ? "opacity-50" : ""}
+          />
           {errors.project_id && (
             <p className="text-sm text-destructive">{errors.project_id}</p>
           )}

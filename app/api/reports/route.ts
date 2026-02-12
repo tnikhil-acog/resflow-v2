@@ -150,6 +150,54 @@ async function handleCreate(req: NextRequest) {
     },
   });
 
+  // Complete weekly report task if this is a WEEKLY report
+  let completedTasksCount = 0;
+
+  if (report_type === "WEEKLY" && week_end_date) {
+    const weeklyReportTasks = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.owner_id, user.id),
+          eq(schema.tasks.entity_type, "REPORT"),
+          eq(schema.tasks.due_on, week_end_date),
+          eq(schema.tasks.status, "DUE"),
+        ),
+      );
+
+    if (weeklyReportTasks.length > 0) {
+      // Mark the weekly report task as completed
+      await db
+        .update(schema.tasks)
+        .set({ status: "COMPLETED" })
+        .where(
+          and(
+            eq(schema.tasks.owner_id, user.id),
+            eq(schema.tasks.entity_type, "REPORT"),
+            eq(schema.tasks.due_on, week_end_date),
+            eq(schema.tasks.status, "DUE"),
+          ),
+        );
+
+      // Create audit log for task completion
+      for (const task of weeklyReportTasks) {
+        await createAuditLog({
+          entity_type: "TASK",
+          entity_id: task.id,
+          operation: "UPDATE",
+          changed_by: user.id,
+          changed_fields: {
+            status: "COMPLETED",
+            completion_reason: "Weekly report submitted",
+            report_id: report.id,
+          },
+        });
+        completedTasksCount++;
+      }
+    }
+  }
+
   return successResponse(
     {
       id: report.id,
@@ -161,6 +209,11 @@ async function handleCreate(req: NextRequest) {
       content: report.content,
       weekly_hours: report.weekly_hours,
       created_at: report.created_at,
+      weekly_report_tasks_completed: completedTasksCount,
+      message:
+        completedTasksCount > 0
+          ? `Report created. ${completedTasksCount} weekly report task(s) completed.`
+          : "Report created successfully.",
     },
     201,
   );

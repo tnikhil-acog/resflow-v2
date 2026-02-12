@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
+import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -57,17 +59,24 @@ interface Project {
 }
 
 export default function ProjectPhasesPage() {
+  return (
+    <ProtectedRoute>
+      <ProjectPhasesContent />
+    </ProtectedRoute>
+  );
+}
+
+function ProjectPhasesContent() {
   const router = useRouter();
   const params = useParams();
   const projectId = params?.id as string;
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [project, setProject] = useState<Project | null>(null);
-  const [userRole, setUserRole] = useState<string>("");
-  const [canManage, setCanManage] = useState(false);
 
   // Dialog states
   const [addPhaseOpen, setAddPhaseOpen] = useState(false);
@@ -79,37 +88,22 @@ export default function ProjectPhasesPage() {
   const [newPhaseDescription, setNewPhaseDescription] = useState("");
   const [reportContent, setReportContent] = useState("");
 
+  // Determine if user can manage phases
+  const isHR = user?.employee_role === "hr_executive";
+  const isPM = user?.employee_role === "project_manager";
+  const canManage = isHR || isPM;
+
   useEffect(() => {
     if (projectId) {
-      fetchUserRole();
       fetchProject();
       fetchPhases();
     }
   }, [projectId]);
 
-  async function fetchUserRole() {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUserRole(data.employee_role);
-        setCanManage(
-          data.employee_role === "hr_executive" ||
-            data.employee_role === "project_manager",
-        );
-      }
-    } catch (error) {
-      console.error("Error fetching user role:", error);
-    }
-  }
-
   async function fetchProject() {
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/projects/${projectId}`, {
+      const response = await fetch(`/api/projects?action=get&id=${projectId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -130,16 +124,25 @@ export default function ProjectPhasesPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch phases");
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Phases API error:", errorData);
+        throw new Error(errorData.message || "Failed to fetch phases");
       }
 
       const data = await response.json();
-      setPhases(data);
+      console.log("Phases data received:", data);
+
+      // API returns array directly
+      const phasesArray = Array.isArray(data) ? data : data.phases || [];
+      setPhases(phasesArray);
     } catch (error) {
       console.error("Error fetching phases:", error);
       toast({
         title: "Error",
-        description: "Failed to fetch project phases.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch project phases.",
         variant: "destructive",
       });
     } finally {
@@ -159,9 +162,13 @@ export default function ProjectPhasesPage() {
 
     try {
       setSubmitting(true);
+      const token = localStorage.getItem("auth_token");
       const response = await fetch("/api/phases", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           project_id: projectId,
           phase_name: newPhaseName,
@@ -169,8 +176,11 @@ export default function ProjectPhasesPage() {
         }),
       });
 
+      const responseData = await response.json();
+      console.log("Create phase response:", responseData);
+
       if (!response.ok) {
-        throw new Error("Failed to create phase");
+        throw new Error(responseData.message || "Failed to create phase");
       }
 
       toast({
@@ -183,6 +193,7 @@ export default function ProjectPhasesPage() {
       setNewPhaseDescription("");
       fetchPhases();
     } catch (error: any) {
+      console.error("Error creating phase:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to create phase.",
@@ -205,17 +216,26 @@ export default function ProjectPhasesPage() {
 
     try {
       setSubmitting(true);
+      const token = localStorage.getItem("auth_token");
       const response = await fetch("/api/phase-reports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           phase_id: selectedPhase.id,
           content: reportContent,
         }),
       });
 
+      const responseData = await response.json();
+      console.log("Submit report response:", responseData);
+
       if (!response.ok) {
-        throw new Error("Failed to submit phase report");
+        throw new Error(
+          responseData.message || "Failed to submit phase report",
+        );
       }
 
       toast({
@@ -228,6 +248,7 @@ export default function ProjectPhasesPage() {
       setSelectedPhase(null);
       fetchPhases();
     } catch (error: any) {
+      console.error("Error submitting report:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to submit phase report.",

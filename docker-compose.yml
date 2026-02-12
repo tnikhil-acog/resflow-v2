@@ -37,8 +37,13 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://resflowuser:${POSTGRES_PASSWORD:-changeme}@db:5432/resflowdb
       JWT_SECRET: ${JWT_SECRET:-resflowsecret}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      CRON_API_KEY: ${CRON_API_KEY:-}
     ports:
       - "3000:3000"
+    volumes:
+      - ./scripts:/app/scripts
+      - cron_logs:/var/log
     networks:
       - resflow-network
 
@@ -48,3 +53,4 @@ networks:
 
 volumes:
   postgres_data:
+  cron_logs:

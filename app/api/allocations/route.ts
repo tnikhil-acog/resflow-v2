@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       emp_id,
+      emp_ids, // NEW: Array of employee IDs for bulk allocation
       project_id,
       role,
       allocation_percentage,
@@ -133,17 +134,28 @@ export async function POST(req: NextRequest) {
       billability,
     } = body;
 
+    // Support both single and bulk allocation
+    const employeeIds =
+      emp_ids && Array.isArray(emp_ids) && emp_ids.length > 0
+        ? emp_ids
+        : emp_id
+          ? [emp_id]
+          : [];
+
     // ---------------- VALIDATION ----------------
 
     if (
-      !emp_id ||
+      employeeIds.length === 0 ||
       !project_id ||
       !role ||
       !allocation_percentage ||
       !start_date
     ) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        {
+          error:
+            "Missing required fields. Need emp_id or emp_ids, project_id, role, allocation_percentage, and start_date",
+        },
         { status: 400 },
       );
     }
@@ -165,71 +177,173 @@ export async function POST(req: NextRequest) {
     const startDateStr = toDateString(start_date)!;
     const endDateStr = toDateString(end_date); // can be null
 
-    // ---------------- OVERLAP CHECK (NULL-SAFE) ----------------
-    // Overlap rule:
-    // existing.start <= new.end
-    // AND
-    // COALESCE(existing.end, '9999-12-31') >= new.start
+    // ---------------- PROCESS EACH EMPLOYEE ----------------
+    const results = [];
+    const errors = [];
 
-    const overlapping = await db
-      .select({
-        total: sum(schema.projectAllocation.allocation_percentage),
-      })
-      .from(schema.projectAllocation)
-      .where(
-        and(
-          eq(schema.projectAllocation.emp_id, emp_id),
+    for (const currentEmpId of employeeIds) {
+      try {
+        // ---------------- OVERLAP CHECK (NULL-SAFE) ----------------
+        const overlapping = await db
+          .select({
+            total: sum(schema.projectAllocation.allocation_percentage),
+          })
+          .from(schema.projectAllocation)
+          .where(
+            and(
+              eq(schema.projectAllocation.emp_id, currentEmpId),
+              lte(
+                schema.projectAllocation.start_date,
+                endDateStr ?? "9999-12-31",
+              ),
+              or(
+                sql`${schema.projectAllocation.end_date} IS NULL`,
+                gte(schema.projectAllocation.end_date, startDateStr),
+              ),
+            ),
+          );
 
-          // existing.start <= new.end (or new.start if end_date is null)
-          lte(schema.projectAllocation.start_date, endDateStr ?? startDateStr),
+        const currentAllocation = overlapping[0]?.total
+          ? parseFloat(overlapping[0].total.toString())
+          : 0;
 
-          // COALESCE(existing.end, infinity) >= new.start
-          gte(
-            sql`COALESCE(${schema.projectAllocation.end_date}, '9999-12-31')`,
-            startDateStr,
+        const totalAllocation = currentAllocation + allocation_percentage;
+
+        if (totalAllocation > 100) {
+          errors.push({
+            emp_id: currentEmpId,
+            error: `Employee allocation exceeds 100%. Current: ${currentAllocation}%, Requested: ${allocation_percentage}%, Total: ${totalAllocation}%`,
+          });
+          continue; // Skip this employee
+        }
+
+        // ---------------- INSERT ALLOCATION ----------------
+        const [allocation] = await db
+          .insert(schema.projectAllocation)
+          .values({
+            emp_id: currentEmpId,
+            project_id,
+            role,
+            allocation_percentage: allocation_percentage.toString(),
+            start_date: startDateStr,
+            end_date: endDateStr ?? null,
+            billability: billability ?? true,
+            assigned_by: user.id,
+          })
+          .returning();
+
+        // ---------------- AUDIT LOG ----------------
+        await createAuditLog({
+          entity_type: "PROJECT_ALLOCATION",
+          entity_id: allocation.id,
+          operation: "INSERT",
+          changed_by: user.id,
+          changed_fields: allocation,
+        });
+
+        results.push(allocation);
+      } catch (error) {
+        console.error(
+          `Error creating allocation for employee ${currentEmpId}:`,
+          error,
+        );
+        errors.push({
+          emp_id: currentEmpId,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to create allocation",
+        });
+      }
+    }
+
+    // ---------------- COMPLETE ALLOCATION TASKS ----------------
+    // Check if there are pending allocation tasks for this project
+    // These would have been created when a demand was approved
+    if (results.length > 0) {
+      const allocationTasks = await db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.entity_type, "DEMAND"),
+            eq(schema.tasks.status, "DUE"),
+            eq(schema.tasks.owner_id, user.id),
           ),
-        ),
-      );
+        );
 
-    const currentAllocation = Number(overlapping[0]?.total || 0);
-    const totalAllocation = currentAllocation + Number(allocation_percentage);
+      // Filter tasks that mention this project (basic check in description)
+      const projectDetails = await db
+        .select({
+          project_name: schema.projects.project_name,
+          project_code: schema.projects.project_code,
+        })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, project_id));
 
-    if (totalAllocation > 100) {
+      let completedTasksCount = 0;
+
+      if (allocationTasks.length > 0 && projectDetails.length > 0) {
+        const projectName = projectDetails[0].project_name;
+        const projectCode = projectDetails[0].project_code;
+
+        // Complete tasks that are related to allocation and mention this project
+        for (const task of allocationTasks) {
+          if (
+            task.description &&
+            task.description.includes("Allocate resources") &&
+            (task.description.includes(projectName) ||
+              task.description.includes(projectCode))
+          ) {
+            await db
+              .update(schema.tasks)
+              .set({ status: "COMPLETED" })
+              .where(eq(schema.tasks.id, task.id));
+
+            await createAuditLog({
+              entity_type: "TASK",
+              entity_id: task.id,
+              operation: "UPDATE",
+              changed_by: user.id,
+              changed_fields: {
+                status: "COMPLETED",
+                completion_reason: "Resource allocation created",
+                allocation_id: results[0].id,
+              },
+            });
+
+            completedTasksCount++;
+          }
+        }
+      }
+
+      // Return response for bulk allocation
       return NextResponse.json(
         {
-          error: `Employee allocation exceeds 100%. Current: ${currentAllocation}%, Requested: ${allocation_percentage}%, Total: ${totalAllocation}%`,
+          created: results.length,
+          failed: errors.length,
+          results: results,
+          errors: errors,
+          allocation_tasks_completed: completedTasksCount,
+          message:
+            errors.length === 0
+              ? `${results.length} allocation(s) created successfully${completedTasksCount > 0 ? `. ${completedTasksCount} allocation task(s) completed.` : "."}`
+              : `${results.length} allocation(s) created, ${errors.length} failed.`,
         },
-        { status: 400 },
+        { status: 201 },
       );
     }
 
-    // ---------------- INSERT ALLOCATION ----------------
-
-    const [allocation] = await db
-      .insert(schema.projectAllocation)
-      .values({
-        emp_id,
-        project_id,
-        role,
-        allocation_percentage: allocation_percentage.toString(),
-        start_date: startDateStr,
-        end_date: endDateStr ?? null, // open-ended supported
-        billability: billability ?? true,
-        assigned_by: user.id,
-      })
-      .returning();
-
-    // ---------------- AUDIT LOG ----------------
-
-    await createAuditLog({
-      entity_type: "PROJECT_ALLOCATION",
-      entity_id: allocation.id,
-      operation: "INSERT",
-      changed_by: user.id,
-      changed_fields: allocation,
-    });
-
-    return NextResponse.json(allocation, { status: 201 });
+    // If no results, return error
+    return NextResponse.json(
+      {
+        created: 0,
+        failed: errors.length,
+        errors: errors,
+        message: "Failed to create any allocations",
+      },
+      { status: 400 },
+    );
   } catch (error) {
     console.error("Error creating allocation:", error);
     return NextResponse.json(
@@ -249,6 +363,58 @@ export async function GET(req: NextRequest) {
     // Handle single allocation retrieval
     if (action === "get" && id) {
       return handleGetAllocation(req, user, id);
+    }
+
+    // Handle capacity check for an employee
+    if (action === "capacity") {
+      const employee_id = searchParams.get("employee_id");
+      const exclude_allocation_id = searchParams.get("exclude_allocation_id");
+
+      if (!employee_id) {
+        return NextResponse.json(
+          { error: "employee_id is required" },
+          { status: 400 },
+        );
+      }
+
+      // Calculate current total allocation for the employee
+      const today = toDateString(new Date())!;
+
+      // Build where conditions
+      const conditions = [
+        eq(schema.projectAllocation.emp_id, employee_id),
+        lte(schema.projectAllocation.start_date, today),
+        or(
+          sql`${schema.projectAllocation.end_date} IS NULL`,
+          gte(schema.projectAllocation.end_date, today),
+        ),
+      ];
+
+      // Exclude the allocation being edited (if provided)
+      if (exclude_allocation_id) {
+        conditions.push(
+          sql`${schema.projectAllocation.id} != ${exclude_allocation_id}`,
+        );
+      }
+
+      const result = await db
+        .select({
+          total: sum(schema.projectAllocation.allocation_percentage),
+        })
+        .from(schema.projectAllocation)
+        .where(and(...conditions));
+
+      const currentAllocation = result[0]?.total
+        ? parseFloat(result[0].total.toString())
+        : 0;
+      const remainingCapacity = Math.max(0, 100 - currentAllocation);
+
+      return NextResponse.json({
+        employee_id,
+        current_allocation: currentAllocation,
+        remaining_capacity: remainingCapacity,
+        excluded_allocation: exclude_allocation_id || null,
+      });
     }
 
     // Handle list allocations

@@ -2,14 +2,11 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EmployeeCombobox } from "@/components/employee-combobox";
+import { EmployeeMultiSelect } from "@/components/employee-multi-select";
+import { ProjectCombobox } from "@/components/project-combobox";
+import { Switch } from "@/components/ui/switch";
 
 interface Employee {
   id: string;
@@ -25,19 +22,21 @@ interface Project {
 
 interface AllocationFormData {
   employee_id: string | undefined;
+  employee_ids: string[];
   project_id: string | undefined;
   allocation_percentage: string;
   role: string;
   is_billable: boolean;
   start_date: string;
   end_date: string;
+  bulk_mode: boolean;
 }
 
 interface AllocationFormFieldsProps {
   isEdit?: boolean;
   formData: AllocationFormData;
   errors: Record<string, string>;
-  onChange: (field: string, value: string | boolean) => void;
+  onChange: (field: string, value: string | boolean | string[]) => void;
   employees: Employee[];
   projects: Project[];
   disabled?: boolean;
@@ -60,29 +59,44 @@ export function AllocationFormFields({
     <div className="space-y-6">
       {/* Employee and Project Selection */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Assignment Details</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Assignment Details</h3>
+          {!isEdit && (
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="bulk_mode"
+                checked={formData.bulk_mode}
+                onCheckedChange={(checked) => onChange("bulk_mode", checked)}
+                disabled={disabled}
+              />
+              <Label htmlFor="bulk_mode" className="text-sm font-normal">
+                Bulk Assignment
+              </Label>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="employee_id">
-              Employee <span className="text-destructive">*</span>
+              Employee{formData.bulk_mode ? "s" : ""}{" "}
+              <span className="text-destructive">*</span>
             </Label>
-            <Select
-              value={formData.employee_id || undefined}
-              onValueChange={(value) => onChange("employee_id", value)}
-              disabled={isEdit || disabled}
-            >
-              <SelectTrigger id="employee_id">
-                <SelectValue placeholder="Select employee" />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id}>
-                    {emp.employee_code} - {emp.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {formData.bulk_mode ? (
+              <EmployeeMultiSelect
+                value={formData.employee_ids}
+                onValueChange={(value) => onChange("employee_ids", value)}
+                disabled={isEdit || disabled}
+                placeholder="Select multiple employees..."
+              />
+            ) : (
+              <EmployeeCombobox
+                value={formData.employee_id}
+                onValueChange={(value) => onChange("employee_id", value)}
+                disabled={isEdit || disabled}
+                placeholder="Search and select employee..."
+              />
+            )}
             {errors.employee_id && (
               <p className="text-sm text-destructive">{errors.employee_id}</p>
             )}
@@ -91,28 +105,22 @@ export function AllocationFormFields({
                 Cannot be changed after creation
               </p>
             )}
+            {formData.bulk_mode && (
+              <p className="text-xs text-muted-foreground">
+                Select multiple employees to assign to the same project
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="project_id">
               Project <span className="text-destructive">*</span>
             </Label>
-            <Select
-              value={formData.project_id || undefined}
+            <ProjectCombobox
+              value={formData.project_id}
               onValueChange={(value) => onChange("project_id", value)}
-              disabled={isEdit || disabled}
-            >
-              <SelectTrigger id="project_id">
-                <SelectValue placeholder="Select project" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.project_code} - {project.project_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Search and select project..."
+            />
             {errors.project_id && (
               <p className="text-sm text-destructive">{errors.project_id}</p>
             )}

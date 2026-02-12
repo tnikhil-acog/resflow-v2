@@ -25,8 +25,8 @@ export function ProtectedRoute({
       // Check if user has required role
       const hasRequiredRole = requiredRoles.includes(user.employee_role);
       if (!hasRequiredRole) {
-        // Redirect to dashboard if user doesn't have required role
-        router.push("/dashboard");
+        // Redirect to analytics if user doesn't have required role
+        router.push("/analytics");
       }
     }
   }, [isAuthenticated, user, router, pathname, requiredRoles]);

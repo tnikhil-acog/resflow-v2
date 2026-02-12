@@ -7,54 +7,59 @@
   /* Ultra-modern professional palette */
   --background: 0 0% 99%;
   --foreground: 240 10% 4%;
-  
+
   --card: 0 0% 100%;
   --card-foreground: 240 10% 4%;
-  
+
   --popover: 0 0% 100%;
   --popover-foreground: 240 10% 4%;
-  
+
+  /* Toast - Light Mode: Black background, White text */
+  --toast-bg: 0 0% 0%;
+  --toast-text: 0 0% 100%;
+  --toast-border: 240 6% 90%;
+
   /* Primary - Modern Indigo */
   --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
-  
+
   /* Secondary - Contemporary Slate */
   --secondary: 240 5% 26%;
   --secondary-foreground: 0 0% 100%;
-  
+
   --muted: 240 5% 96%;
   --muted-foreground: 240 4% 46%;
-  
+
   --accent: 240 5% 96%;
   --accent-foreground: 240 10% 4%;
-  
+
   /* Success - Modern Green */
   --success: 142 76% 36%;
   --success-foreground: 0 0% 100%;
-  
+
   /* Warning - Contemporary Amber */
   --warning: 38 92% 50%;
   --warning-foreground: 0 0% 100%;
-  
+
   /* Destructive - Modern Red */
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  
+
   /* Info - Contemporary Blue */
   --info: 199 89% 48%;
   --info-foreground: 0 0% 100%;
-  
+
   --border: 240 6% 90%;
   --input: 240 6% 90%;
   --ring: 239 84% 67%;
-  
+
   /* Chart colors - vibrant modern palette */
   --chart-1: 239 84% 67%;
   --chart-2: 280 83% 58%;
   --chart-3: 142 76% 36%;
   --chart-4: 38 92% 50%;
   --chart-5: 199 89% 48%;
-  
+
   /* Sidebar - subtle background */
   --sidebar: 240 5% 98%;
   --sidebar-foreground: 240 10% 4%;
@@ -64,22 +69,26 @@
   --sidebar-accent-foreground: 240 10% 4%;
   --sidebar-border: 240 6% 92%;
   --sidebar-ring: 239 84% 67%;
-  
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
-  
+
   --radius: 0.5rem;
-  
+
   /* Enhanced shadows for depth */
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-md: 0 6px 10px -1px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-md:
+    0 6px 10px -1px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg:
+    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl:
+    0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-  
+
   --tracking-normal: 0rem;
   --spacing: 0.25rem;
 }
@@ -87,54 +96,59 @@
 .dark {
   --background: 240 10% 4%;
   --foreground: 0 0% 98%;
-  
+
   --card: 240 6% 6%;
   --card-foreground: 0 0% 98%;
-  
+
   --popover: 240 6% 6%;
   --popover-foreground: 0 0% 98%;
-  
+
+  /* Toast - Dark Mode: White background, Black text */
+  --toast-bg: 0 0% 100%;
+  --toast-text: 0 0% 0%;
+  --toast-border: 240 4% 16%;
+
   /* Primary - Modern Indigo (brighter for dark) */
   --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
-  
+
   /* Secondary - Contemporary Slate */
   --secondary: 240 4% 65%;
   --secondary-foreground: 240 6% 10%;
-  
+
   --muted: 240 4% 16%;
   --muted-foreground: 240 5% 65%;
-  
+
   --accent: 240 4% 16%;
   --accent-foreground: 0 0% 98%;
-  
+
   /* Success - Modern Green */
   --success: 142 76% 36%;
   --success-foreground: 0 0% 100%;
-  
+
   /* Warning - Contemporary Amber */
   --warning: 38 92% 50%;
   --warning-foreground: 0 0% 100%;
-  
+
   /* Destructive - Modern Red */
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  
+
   /* Info - Contemporary Blue */
   --info: 199 89% 48%;
   --info-foreground: 0 0% 100%;
-  
+
   --border: 240 4% 16%;
   --input: 240 4% 16%;
   --ring: 239 84% 67%;
-  
+
   /* Chart colors */
   --chart-1: 239 84% 67%;
   --chart-2: 280 83% 58%;
   --chart-3: 142 76% 36%;
   --chart-4: 38 92% 50%;
   --chart-5: 199 89% 48%;
-  
+
   /* Sidebar */
   --sidebar: 240 6% 6%;
   --sidebar-foreground: 0 0% 98%;
@@ -144,20 +158,24 @@
   --sidebar-accent-foreground: 0 0% 98%;
   --sidebar-border: 240 4% 16%;
   --sidebar-ring: 239 84% 67%;
-  
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
-  
+
   --radius: 0.5rem;
-  
+
   /* Enhanced shadows for depth (darker for dark mode) */
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-  --shadow-md: 0 6px 10px -1px rgb(0 0 0 / 0.3), 0 4px 6px -2px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+  --shadow-md:
+    0 6px 10px -1px rgb(0 0 0 / 0.3), 0 4px 6px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg:
+    0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  --shadow-xl:
+    0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.5);
 }
 
@@ -266,12 +284,16 @@ body {
     line-height: 1.5;
     letter-spacing: 0.01em;
   }
-  
+
   /* Smooth transitions for all interactive elements */
-  button, a, input, select, textarea {
+  button,
+  a,
+  input,
+  select,
+  textarea {
     @apply transition-all duration-200 ease-out;
   }
-  
+
   /* Enhanced focus styles */
   :focus-visible {
     @apply outline-2 outline-ring outline-offset-2 ring-2 ring-ring/20;

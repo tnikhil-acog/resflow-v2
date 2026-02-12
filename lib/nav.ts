@@ -12,6 +12,9 @@ import {
   ScrollText,
   UserCog,
   UserCircle,
+  TrendingUp,
+  Calendar,
+  Download,
 } from "lucide-react";
 
 export type NavItem = {
@@ -29,6 +32,12 @@ export const navConfig = {
       url: "/dashboard",
       icon: LayoutDashboard,
       roles: ["employee", "project_manager", "hr_executive"],
+    },
+    {
+      title: "Analytics",
+      url: "/analytics",
+      icon: BarChart3,
+      roles: ["project_manager", "hr_executive"],
     },
   ],
 
@@ -93,6 +102,12 @@ export const navConfig = {
       icon: FileText,
       roles: ["hr_executive"], // Only HR can access audit logs
     },
+    {
+      title: "Data Export",
+      url: "/exports",
+      icon: Download,
+      roles: ["hr_executive"], // Only HR can export data
+    },
   ],
 
   reports: [
@@ -101,6 +116,18 @@ export const navConfig = {
       url: "/reports",
       icon: BarChart3,
       roles: ["employee", "project_manager", "hr_executive"],
+    },
+    {
+      title: "Monthly Reports",
+      url: "/reports/monthly",
+      icon: Calendar,
+      roles: ["project_manager", "hr_executive"],
+    },
+    {
+      title: "Team Productivity",
+      url: "/reports/productivity",
+      icon: TrendingUp,
+      roles: ["project_manager", "hr_executive"],
     },
   ],
 

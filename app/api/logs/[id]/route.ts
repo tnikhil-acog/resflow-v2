@@ -83,8 +83,8 @@ export async function PUT(
       return ErrorResponses.notFound("Log");
     }
 
-    // Check ownership
-    if (log.emp_id !== user.id && !checkRole(user, ["hr_executive"])) {
+    // Check ownership - only the owner can edit their log
+    if (log.emp_id !== user.id) {
       return ErrorResponses.accessDenied();
     }
 
@@ -135,7 +135,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/logs/[id] - Delete log
+// DELETE /api/logs/[id] - Delete log (conditional)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -154,19 +154,19 @@ export async function DELETE(
       return ErrorResponses.notFound("Log");
     }
 
-    // Check ownership
-    if (log.emp_id !== user.id && !checkRole(user, ["hr_executive"])) {
+    // Check ownership - only the owner or HR can delete
+    if (log.emp_id !== user.id && user.employee_role !== "hr_executive") {
       return ErrorResponses.accessDenied();
     }
 
     // Check if locked
     if (log.locked) {
       return ErrorResponses.badRequest(
-        "Cannot delete locked logs (already submitted in a report)",
+        "Cannot delete locked logs. This entry is part of a submitted timesheet.",
       );
     }
 
-    // Delete log
+    // Delete the log
     await db
       .delete(schema.dailyProjectLogs)
       .where(eq(schema.dailyProjectLogs.id, id));
@@ -177,7 +177,12 @@ export async function DELETE(
       entity_id: id,
       operation: "DELETE",
       changed_by: user.id,
-      changed_fields: { deleted: true },
+      changed_fields: {
+        emp_id: log.emp_id,
+        project_id: log.project_id,
+        log_date: log.log_date,
+        hours: log.hours,
+      },
     });
 
     return successResponse({ message: "Log deleted successfully" });

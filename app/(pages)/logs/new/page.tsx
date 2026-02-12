@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon, Plus, Trash2, X } from "lucide-react";
 import {
@@ -17,7 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 
 interface Project {
@@ -36,8 +36,10 @@ interface LogEntry {
 export default function NewLogPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [fetchingProjects, setFetchingProjects] = useState(true);
+  const [allAllocations, setAllAllocations] = useState<any[]>([]); // Store all allocations
   const [projects, setProjects] = useState<Project[]>([]);
   const [logDate, setLogDate] = useState<string>(
     new Date().toISOString().split("T")[0],
@@ -59,12 +61,22 @@ export default function NewLogPage() {
     fetchUserAllocations();
   }, []);
 
+  // Update available projects when log date changes
+  useEffect(() => {
+    filterProjectsByDate(logDate);
+  }, [logDate, allAllocations]);
+
   async function fetchUserAllocations() {
     try {
       setFetchingProjects(true);
 
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/allocations?active_only=true", {
+      // Fetch only allocations for the current user
+      const params = new URLSearchParams();
+      if (user?.id) {
+        params.append("emp_id", user.id);
+      }
+      const response = await fetch(`/api/allocations?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -73,9 +85,34 @@ export default function NewLogPage() {
       }
 
       const data = await response.json();
+      setAllAllocations(data.allocations || []);
 
-      const projectsMap = new Map<string, Project>();
-      (data.allocations || []).forEach((allocation: any) => {
+      // Filter projects for current date
+      filterProjectsByDate(logDate);
+    } catch (error) {
+      console.error("Error fetching allocations:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch your project allocations.",
+        variant: "destructive",
+      });
+    } finally {
+      setFetchingProjects(false);
+    }
+  }
+
+  function filterProjectsByDate(date: string) {
+    const projectsMap = new Map<string, Project>();
+    const selectedDate = new Date(date);
+
+    (allAllocations || []).forEach((allocation: any) => {
+      const startDate = new Date(allocation.start_date);
+      const endDate = allocation.end_date
+        ? new Date(allocation.end_date)
+        : null;
+
+      // Check if the selected date falls within the allocation period
+      if (startDate <= selectedDate && (!endDate || endDate >= selectedDate)) {
         const pid = allocation.project_id || allocation.project?.id;
         const pcode =
           allocation.project_code || allocation.project?.project_code;
@@ -89,28 +126,19 @@ export default function NewLogPage() {
             project_name: pname || "Unknown",
           });
         }
-      });
-
-      const projectsList = Array.from(projectsMap.values());
-      setProjects(projectsList);
-
-      if (projectsList.length === 0) {
-        toast({
-          title: "No Active Allocations",
-          description:
-            "You don't have any active project allocations. Please contact your manager.",
-          variant: "destructive",
-        });
       }
-    } catch (error) {
-      console.error("Error fetching allocations:", error);
+    });
+
+    const projectsList = Array.from(projectsMap.values());
+    setProjects(projectsList);
+
+    if (projectsList.length === 0 && allAllocations.length > 0) {
       toast({
-        title: "Error",
-        description: "Failed to fetch your project allocations.",
+        title: "No Active Allocations for Selected Date",
+        description:
+          "You don't have any allocations for the selected date. Please choose a different date.",
         variant: "destructive",
       });
-    } finally {
-      setFetchingProjects(false);
     }
   }
 
@@ -255,76 +283,71 @@ export default function NewLogPage() {
     setLoading(true);
 
     try {
-      const results = {
-        successful: 0,
-        failed: 0,
-        errors: [] as string[],
-      };
-
-      // Submit each log entry
       const token = localStorage.getItem("auth_token");
 
-      for (const entry of logEntries) {
-        try {
-          const payload = {
-            project_id: entry.project_id,
-            log_date: logDate,
-            hours: parseFloat(entry.hours),
-            notes: entry.notes || null,
-          };
+      // Prepare bulk submission payload
+      const payload = {
+        logs: logEntries.map((entry) => ({
+          project_id: entry.project_id,
+          log_date: logDate,
+          hours: parseFloat(entry.hours),
+          notes: entry.notes || null,
+        })),
+      };
 
-          const response = await fetch("/api/logs", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payload),
-          });
+      const response = await fetch("/api/logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-          const result = await response.json();
+      const result = await response.json();
 
-          if (!response.ok) {
-            throw new Error(result.error || "Failed to create log");
-          }
-
-          results.successful++;
-        } catch (error: any) {
-          results.failed++;
-          const projectName =
-            projects.find((p) => p.id === entry.project_id)?.project_name ||
-            "Unknown";
-          results.errors.push(`${projectName}: ${error.message}`);
-        }
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to create logs");
       }
 
-      // Show results
-      if (results.failed === 0) {
+      const successCount = result.successful || logEntries.length;
+      const failedCount = result.failed || 0;
+
+      if (failedCount > 0 && result.errors) {
+        const errorMessages = result.errors
+          .map((err: any) => {
+            const project = projects.find((p) => p.id === err.project_id);
+            return `${project?.project_code || "Unknown"}: ${err.error}`;
+          })
+          .join("\n");
+
         toast({
-          title: "Success",
-          description: `${results.successful} work log(s) created successfully.`,
-        });
-        router.push("/logs");
-      } else if (results.successful === 0) {
-        toast({
-          title: "Error",
-          description: "Failed to create work logs. Please try again.",
+          title: "Partial Success",
+          description: `${successCount} log(s) created successfully, ${failedCount} failed:\n${errorMessages}`,
           variant: "destructive",
         });
       } else {
         toast({
-          title: "Partial Success",
-          description: `${results.successful} log(s) created, ${results.failed} failed: ${results.errors.join(", ")}`,
-          variant: "destructive",
+          title: "Success",
+          description: `${successCount} work log(s) created successfully!`,
         });
-        // Refresh to show which ones succeeded
-        router.push("/logs");
       }
+
+      // Reset form and redirect
+      setLogEntries([
+        {
+          id: crypto.randomUUID(),
+          project_id: "",
+          hours: "",
+          notes: "",
+        },
+      ]);
+      router.push("/logs");
     } catch (error: any) {
-      console.error("Error creating logs:", error);
+      console.error("Error submitting logs:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        description: error.message || "Failed to submit work logs",
         variant: "destructive",
       });
     } finally {
@@ -389,28 +412,27 @@ export default function NewLogPage() {
 
           {/* Date Picker */}
           <Card>
-            <CardHeader>
-              <CardTitle>Log Date</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="log_date">
-                  Date <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="log_date"
-                  type="date"
-                  value={logDate}
-                  onChange={(e) => {
-                    setLogDate(e.target.value);
-                    setDateError("");
-                  }}
-                  max={new Date().toISOString().split("T")[0]}
-                  disabled={loading}
-                  className={dateError ? "border-red-500" : ""}
-                />
+            <CardContent className="pt-6">
+              <div className="flex flex-col md:flex-row md:items-end md:gap-4">
+                <div className="space-y-2 flex-1">
+                  <Label htmlFor="log_date">
+                    Date <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="log_date"
+                    type="date"
+                    value={logDate}
+                    onChange={(e) => {
+                      setLogDate(e.target.value);
+                      setDateError("");
+                    }}
+                    max={new Date().toISOString().split("T")[0]}
+                    disabled={loading}
+                    className={dateError ? "border-red-500" : ""}
+                  />
+                </div>
                 {dateError && (
-                  <p className="text-sm text-red-500">{dateError}</p>
+                  <p className="text-sm text-red-500 md:mb-2">{dateError}</p>
                 )}
               </div>
             </CardContent>
@@ -437,83 +459,85 @@ export default function NewLogPage() {
                     </Button>
                   )}
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Project Selector */}
-                  <div className="space-y-2">
-                    <Label htmlFor={`project_${entry.id}`}>
-                      Project <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      value={entry.project_id}
-                      onValueChange={(value) =>
-                        handleEntryChange(entry.id, "project_id", value)
-                      }
-                      disabled={loading}
-                    >
-                      <SelectTrigger
-                        id={`project_${entry.id}`}
-                        className={
-                          errors[entry.id]?.project_id ? "border-red-500" : ""
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Project Selector */}
+                    <div className="space-y-2">
+                      <Label htmlFor={`project_${entry.id}`}>
+                        Project <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={entry.project_id}
+                        onValueChange={(value) =>
+                          handleEntryChange(entry.id, "project_id", value)
                         }
+                        disabled={loading}
                       >
-                        <SelectValue placeholder="Select a project" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.project_code} - {project.project_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors[entry.id]?.project_id && (
-                      <p className="text-sm text-red-500">
-                        {errors[entry.id].project_id}
-                      </p>
-                    )}
-                  </div>
+                        <SelectTrigger
+                          id={`project_${entry.id}`}
+                          className={
+                            errors[entry.id]?.project_id ? "border-red-500" : ""
+                          }
+                        >
+                          <SelectValue placeholder="Select a project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.project_code} - {project.project_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors[entry.id]?.project_id && (
+                        <p className="text-sm text-red-500">
+                          {errors[entry.id].project_id}
+                        </p>
+                      )}
+                    </div>
 
-                  {/* Hours Input */}
-                  <div className="space-y-2">
-                    <Label htmlFor={`hours_${entry.id}`}>
-                      Hours Worked <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id={`hours_${entry.id}`}
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="24"
-                      placeholder="e.g., 8 or 8.5"
-                      value={entry.hours}
-                      onChange={(e) =>
-                        handleEntryChange(entry.id, "hours", e.target.value)
-                      }
-                      disabled={loading}
-                      className={
-                        errors[entry.id]?.hours ? "border-red-500" : ""
-                      }
-                    />
-                    {errors[entry.id]?.hours && (
-                      <p className="text-sm text-red-500">
-                        {errors[entry.id].hours}
-                      </p>
-                    )}
-                  </div>
+                    {/* Hours Input */}
+                    <div className="space-y-2">
+                      <Label htmlFor={`hours_${entry.id}`}>
+                        Hours Worked <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id={`hours_${entry.id}`}
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        placeholder="e.g., 8 or 8.5"
+                        value={entry.hours}
+                        onChange={(e) =>
+                          handleEntryChange(entry.id, "hours", e.target.value)
+                        }
+                        disabled={loading}
+                        className={
+                          errors[entry.id]?.hours ? "border-red-500" : ""
+                        }
+                      />
+                      {errors[entry.id]?.hours && (
+                        <p className="text-sm text-red-500">
+                          {errors[entry.id].hours}
+                        </p>
+                      )}
+                    </div>
 
-                  {/* Notes Textarea */}
-                  <div className="space-y-2">
-                    <Label htmlFor={`notes_${entry.id}`}>Notes</Label>
-                    <Textarea
-                      id={`notes_${entry.id}`}
-                      placeholder="Describe the work done (optional)"
-                      value={entry.notes}
-                      onChange={(e) =>
-                        handleEntryChange(entry.id, "notes", e.target.value)
-                      }
-                      disabled={loading}
-                      rows={3}
-                    />
+                    {/* Notes Input */}
+                    <div className="space-y-2">
+                      <Label htmlFor={`notes_${entry.id}`}>Notes</Label>
+                      <Input
+                        id={`notes_${entry.id}`}
+                        type="text"
+                        placeholder="Work details (optional)"
+                        value={entry.notes}
+                        onChange={(e) =>
+                          handleEntryChange(entry.id, "notes", e.target.value)
+                        }
+                        disabled={loading}
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>

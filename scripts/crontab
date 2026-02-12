@@ -1,0 +1,21 @@
+# ResFlow Cron Jobs Configuration
+
+# This file defines scheduled tasks for the ResFlow application
+
+# Environment variables (loaded from .env or set in Docker)
+
+# BASE_URL=http://localhost:3000
+
+# CRON_API_KEY=your-secure-api-key
+
+# Daily log task generation - Every day at 9:00 AM
+
+0 9 \* \* \* /app/scripts/cron-runner.sh daily >> /var/log/cron-daily.log 2>&1
+
+# Weekly report task generation - Every Monday at 9:00 AM
+
+0 9 \* \* 1 /app/scripts/cron-runner.sh weekly >> /var/log/cron-weekly.log 2>&1
+
+# Keep logs clean (optional) - Delete logs older than 30 days at midnight
+
+0 0 \* \* _ find /var/log/cron-_.log -mtime +30 -delete 2>&1

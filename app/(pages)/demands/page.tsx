@@ -19,6 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ProjectCombobox } from "@/components/project-combobox";
+import { EmployeeCombobox } from "@/components/employee-combobox";
 import { DataTable, Column } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -39,18 +41,6 @@ interface Demand {
   created_at: string;
 }
 
-interface Project {
-  id: string;
-  project_code: string;
-  project_name: string;
-}
-
-interface Employee {
-  id: string;
-  employee_code: string;
-  full_name: string;
-}
-
 export default function DemandsListPage() {
   return (
     <ProtectedRoute requiredRoles={["project_manager", "hr_executive"]}>
@@ -63,8 +53,6 @@ function DemandsListContent() {
   const router = useRouter();
   const { user } = useAuth();
   const [demands, setDemands] = useState<Demand[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [projectFilter, setProjectFilter] = useState<string | undefined>(
@@ -82,49 +70,8 @@ function DemandsListContent() {
   const canCreate = isPM || isHR;
 
   useEffect(() => {
-    fetchProjects();
-    fetchEmployees();
     fetchDemands();
   }, [projectFilter, statusFilter, requestedByFilter]);
-
-  const fetchProjects = async () => {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const params = new URLSearchParams();
-
-      // If PM, only fetch their own projects
-      if (isPM && user?.id) {
-        params.append("project_manager_id", user.id);
-      }
-
-      const response = await fetch(`/api/projects?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data.projects || []);
-      }
-    } catch (error) {
-      console.error("Error fetching projects:", error);
-    }
-  };
-
-  const fetchEmployees = async () => {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setEmployees(data.employees || []);
-      }
-    } catch (error) {
-      console.error("Error fetching employees:", error);
-    }
-  };
 
   const fetchDemands = async () => {
     try {
@@ -256,27 +203,17 @@ function DemandsListContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Project</label>
-                <Select
-                  value={projectFilter}
+                <ProjectCombobox
+                  value={projectFilter || "ALL"}
                   onValueChange={(v) =>
-                    setProjectFilter(v === "all" ? undefined : v)
+                    setProjectFilter(v === "ALL" ? undefined : v)
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All projects" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Projects</SelectItem>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.project_code} - {p.project_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="All projects"
+                  showAllOption={true}
+                />
               </div>
 
               <div className="space-y-2">
@@ -302,24 +239,13 @@ function DemandsListContent() {
               {isHR && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Requested By</label>
-                  <Select
+                  <EmployeeCombobox
                     value={requestedByFilter}
                     onValueChange={(v) =>
-                      setRequestedByFilter(v === "all" ? undefined : v)
+                      setRequestedByFilter(v === "" ? undefined : v)
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All requesters" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Requesters</SelectItem>
-                      {employees.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.employee_code} - {e.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="All requesters"
+                  />
                 </div>
               )}
             </div>

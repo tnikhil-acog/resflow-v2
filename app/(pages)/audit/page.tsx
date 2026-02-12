@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PaginationControls } from "@/components/pagination-controls";
 import { EmptyState } from "@/components/empty-state";
+import { EmployeeCombobox } from "@/components/employee-combobox";
 import { toast } from "sonner";
 import {
   ChevronDown,
@@ -44,12 +45,6 @@ interface AuditLog {
   changed_fields: Record<string, any> | null;
 }
 
-interface Employee {
-  id: string;
-  employee_code: string;
-  full_name: string;
-}
-
 export default function AuditPage() {
   return (
     <ProtectedRoute requiredRoles={["hr_executive"]}>
@@ -62,7 +57,6 @@ function AuditContent() {
   const router = useRouter();
   const { user } = useAuth();
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
@@ -108,10 +102,6 @@ function AuditContent() {
   const operations = ["INSERT", "UPDATE", "DELETE"];
 
   useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  useEffect(() => {
     fetchAuditLogs();
   }, [
     page,
@@ -131,22 +121,6 @@ function AuditContent() {
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleSearch();
-    }
-  };
-
-  const fetchEmployees = async () => {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setEmployees(data.employees || []);
-      }
-    } catch (error) {
-      console.error("Error fetching employees:", error);
     }
   };
 
@@ -311,25 +285,14 @@ function AuditContent() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Changed By</label>
-                  <Select
+                  <EmployeeCombobox
                     value={userFilter}
                     onValueChange={(v) => {
-                      setUserFilter(v === "all" ? undefined : v);
+                      setUserFilter(v === "" ? undefined : v);
                       setPage(1);
                     }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All users" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Users</SelectItem>
-                      {employees.map((emp) => (
-                        <SelectItem key={emp.id} value={emp.id}>
-                          {emp.employee_code} - {emp.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="All users"
+                  />
                 </div>
               </div>
 

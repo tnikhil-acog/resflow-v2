@@ -76,6 +76,7 @@ function EditProjectContent() {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [hasShownPermissionError, setHasShownPermissionError] = useState(false);
 
   const isHR = user?.employee_role === "hr_executive";
   const isPM = user?.employee_role === "project_manager";
@@ -97,7 +98,8 @@ function EditProjectContent() {
       );
 
       if (!projectResponse.ok) {
-        if (projectResponse.status === 403) {
+        if (projectResponse.status === 403 && !hasShownPermissionError) {
+          setHasShownPermissionError(true);
           toast.error("You don't have permission to edit this project");
           router.push("/projects");
           return;
@@ -123,16 +125,28 @@ function EditProjectContent() {
       });
 
       // Fetch allowed status transitions
-      const transitionsResponse = await fetch(
-        `/api/projects/status-transitions?current_status=${projectData.status}&role=${user?.employee_role}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      if (transitionsResponse.ok) {
-        const transitionsData = await transitionsResponse.json();
-        setAllowedStatusTransitions(transitionsData.allowed_transitions || []);
+      if (isPM) {
+        // For PM, allow limited status transitions
+        const currentStatus = projectData.status;
+        const pmAllowedTransitions: Record<string, string[]> = {
+          DRAFT: ["ACTIVE"],
+          ACTIVE: ["ON_HOLD", "COMPLETED"],
+          ON_HOLD: ["ACTIVE"],
+          COMPLETED: [], // Cannot change from completed
+          CANCELLED: [], // Cannot change from cancelled
+        };
+        setAllowedStatusTransitions(
+          pmAllowedTransitions[currentStatus] || [currentStatus],
+        );
+      } else if (isHR) {
+        // HR can transition to any status
+        setAllowedStatusTransitions([
+          "DRAFT",
+          "ACTIVE",
+          "ON_HOLD",
+          "COMPLETED",
+          "CANCELLED",
+        ]);
       }
 
       // Fetch clients (only for HR)

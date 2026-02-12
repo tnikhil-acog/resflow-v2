@@ -68,7 +68,12 @@ export default function LogDetailPage() {
   async function fetchLogDetail() {
     try {
       setFetching(true);
-      const response = await fetch(`/api/logs/${logId}`);
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(`/api/logs/${logId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -158,6 +163,7 @@ export default function LogDetailPage() {
     setLoading(true);
 
     try {
+      const token = localStorage.getItem("auth_token");
       const payload = {
         hours: parseFloat(formData.hours),
         notes: formData.notes || null,
@@ -165,7 +171,10 @@ export default function LogDetailPage() {
 
       const response = await fetch(`/api/logs/${logId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(payload),
       });
 

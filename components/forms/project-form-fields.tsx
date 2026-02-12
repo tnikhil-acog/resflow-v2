@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PMCombobox } from "@/components/pm-combobox";
 
 interface Client {
   id: string;
@@ -110,16 +111,14 @@ export function ProjectFormFields({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="client_id">
-                Client <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="client_id">Client (Optional)</Label>
               <Select
                 value={formData.client_id || undefined}
                 onValueChange={(value) => onChange("client_id", value)}
                 disabled={disabled}
               >
                 <SelectTrigger id="client_id">
-                  <SelectValue placeholder="Select client" />
+                  <SelectValue placeholder="Select client (optional)" />
                 </SelectTrigger>
                 <SelectContent>
                   {clients.map((client) => (
@@ -138,22 +137,12 @@ export function ProjectFormFields({
               <Label htmlFor="project_manager_id">
                 Project Manager <span className="text-destructive">*</span>
               </Label>
-              <Select
+              <PMCombobox
                 value={formData.project_manager_id || undefined}
                 onValueChange={(value) => onChange("project_manager_id", value)}
+                placeholder="Search and select project manager..."
                 disabled={disabled}
-              >
-                <SelectTrigger id="project_manager_id">
-                  <SelectValue placeholder="Select project manager" />
-                </SelectTrigger>
-                <SelectContent>
-                  {managers.map((manager) => (
-                    <SelectItem key={manager.id} value={manager.id}>
-                      {manager.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
               {errors.project_manager_id && (
                 <p className="text-sm text-destructive">
                   {errors.project_manager_id}

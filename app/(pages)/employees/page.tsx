@@ -69,9 +69,16 @@ function EmployeesListContent() {
   const { user } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [projects, setProjects] = useState<
+    { id: string; project_name: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchInput, setSearchInput] = useState<string>(""); // Separate input state
+
+  // Metrics state
+  const [activeCount, setActiveCount] = useState(0);
+  const [totalEmployeesCount, setTotalEmployeesCount] = useState(0);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -84,6 +91,9 @@ function EmployeesListContent() {
     undefined,
   );
   const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
+  const [projectFilter, setProjectFilter] = useState<string | undefined>(
+    undefined,
+  );
 
   // Exit modal
   const [exitModalOpen, setExitModalOpen] = useState(false);
@@ -92,20 +102,66 @@ function EmployeesListContent() {
   );
 
   const isHR = user?.employee_role === "hr_executive";
+  const isPM = user?.employee_role === "project_manager";
+  const isEmployee = user?.employee_role === "employee";
 
   // Fetch when filters or pagination changes
   useEffect(() => {
     setCurrentPage(1); // Reset to page 1 when filters change
-  }, [statusFilter, departmentFilter, roleFilter, searchQuery]);
+  }, [statusFilter, departmentFilter, roleFilter, searchQuery, projectFilter]);
 
   useEffect(() => {
     fetchDepartments();
+    fetchActiveCount();
+    fetchTotalCount();
+    if (isPM) {
+      fetchPMProjects();
+    }
   }, []);
 
   // Fetch employees whenever page, filters, or search changes
   useEffect(() => {
     fetchEmployees();
-  }, [currentPage, statusFilter, departmentFilter, roleFilter, searchQuery]);
+  }, [
+    currentPage,
+    statusFilter,
+    departmentFilter,
+    roleFilter,
+    searchQuery,
+    projectFilter,
+  ]);
+
+  const fetchActiveCount = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/employees?status=ACTIVE&limit=0", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setActiveCount(data.total || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching active count:", error);
+    }
+  };
+
+  const fetchTotalCount = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/employees?limit=0", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTotalEmployeesCount(data.total || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching total count:", error);
+    }
+  };
 
   const fetchDepartments = async () => {
     try {
@@ -123,30 +179,105 @@ function EmployeesListContent() {
     }
   };
 
+  const fetchPMProjects = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(
+        `/api/projects?project_manager_id=${user?.id}&limit=1000`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setProjects(data.projects || []);
+      }
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+    }
+  };
+
   const fetchEmployees = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("auth_token");
-      const params = new URLSearchParams();
 
-      if (statusFilter) params.append("status", statusFilter);
-      if (departmentFilter) params.append("department_id", departmentFilter);
-      if (roleFilter) params.append("role", roleFilter);
-      if (searchQuery) params.append("search", searchQuery);
-      params.append("page", currentPage.toString());
-      params.append("limit", pageSize.toString());
+      // If project filter is active, fetch employees via allocations
+      if (projectFilter && isPM) {
+        const allocResponse = await fetch(
+          `/api/allocations?project_id=${projectFilter}&limit=1000`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
 
-      const response = await fetch(`/api/employees?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+        if (allocResponse.ok) {
+          const allocData = await allocResponse.json();
+          const allocations = allocData.allocations || [];
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch employees");
+          // Get unique employee IDs from allocations
+          const employeeIds = [
+            ...new Set(allocations.map((a: any) => a.emp_id)),
+          ];
+
+          // Fetch employee details for these IDs
+          if (employeeIds.length > 0) {
+            const empPromises = employeeIds.map((id) =>
+              fetch(`/api/employees?action=get&id=${id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              }).then((r) => r.json()),
+            );
+
+            const employeesData = await Promise.all(empPromises);
+            let filteredEmps = employeesData.filter((emp) => emp && emp.id);
+
+            // Apply additional filters
+            if (statusFilter) {
+              filteredEmps = filteredEmps.filter(
+                (e) => e.status === statusFilter,
+              );
+            }
+            if (searchQuery) {
+              const query = searchQuery.toLowerCase();
+              filteredEmps = filteredEmps.filter(
+                (e) =>
+                  e.full_name?.toLowerCase().includes(query) ||
+                  e.email?.toLowerCase().includes(query) ||
+                  e.employee_code?.toLowerCase().includes(query),
+              );
+            }
+
+            setEmployees(filteredEmps);
+            setTotal(filteredEmps.length);
+          } else {
+            setEmployees([]);
+            setTotal(0);
+          }
+        }
+      } else {
+        // Normal employee fetch without project filter
+        const params = new URLSearchParams();
+
+        if (statusFilter) params.append("status", statusFilter);
+        if (departmentFilter) params.append("department_id", departmentFilter);
+        if (roleFilter) params.append("role", roleFilter);
+        if (searchQuery) params.append("search", searchQuery);
+        params.append("page", currentPage.toString());
+        params.append("limit", pageSize.toString());
+
+        const response = await fetch(`/api/employees?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch employees");
+        }
+
+        const result = await response.json();
+        setEmployees(result.employees || []);
+        setTotal(result.total || 0);
       }
-
-      const result = await response.json();
-      setEmployees(result.employees || []);
-      setTotal(result.total || 0);
     } catch (error) {
       console.error("Error fetching employees:", error);
       toast.error("Failed to load employees");
@@ -179,7 +310,12 @@ function EmployeesListContent() {
   };
 
   const handleRowClick = (employee: Employee) => {
-    router.push(`/employees/${employee.id}`);
+    // If employee role, redirect to their own profile
+    if (isEmployee) {
+      router.push(`/employees/${user?.id}`);
+    } else {
+      router.push(`/employees/${employee.id}`);
+    }
   };
 
   const handleEdit = (employee: Employee) => {
@@ -275,39 +411,45 @@ function EmployeesListContent() {
         <Card className="group relative overflow-hidden border-l-4 border-l-primary hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-primary/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Employees</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Employees
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{total}</div>
+            <div className="text-2xl font-bold">{totalEmployeesCount}</div>
           </CardContent>
         </Card>
-        
+
         <Card className="group relative overflow-hidden border-l-4 border-l-emerald-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-emerald-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Active
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {employees.filter(e => e.status === 'ACTIVE').length}
-            </div>
+            <div className="text-2xl font-bold">{activeCount}</div>
           </CardContent>
         </Card>
-        
+
         <Card className="group relative overflow-hidden border-l-4 border-l-amber-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-amber-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Actions</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pending Actions
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">0</div>
           </CardContent>
         </Card>
-        
+
         <Card className="group relative overflow-hidden border-l-4 border-l-violet-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-violet-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              This Month
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">0</div>
@@ -329,7 +471,10 @@ function EmployeesListContent() {
               </CardDescription>
             </div>
             {isHR && (
-              <Button onClick={() => router.push("/employees/new")} className="whitespace-nowrap">
+              <Button
+                onClick={() => router.push("/employees/new")}
+                className="whitespace-nowrap"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Employee
               </Button>
@@ -337,196 +482,217 @@ function EmployeesListContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-            {/* Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium">Search</label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      placeholder="Search by name, email, code..."
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Button onClick={handleSearch} variant="default">
-                    Search
-                  </Button>
+          {/* Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium">Search</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search by name, email, code..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="pl-10"
+                  />
                 </div>
+                <Button onClick={handleSearch} variant="default">
+                  Search
+                </Button>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Status</label>
-                <Select
-                  value={statusFilter}
-                  onValueChange={(value) => handleFilterChange("status", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ACTIVE">Active</SelectItem>
-                    <SelectItem value="EXITED">Exited</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Status</label>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => handleFilterChange("status", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Active</SelectItem>
+                  <SelectItem value="EXITED">Exited</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Department</label>
+              <Select
+                value={departmentFilter || "all"}
+                onValueChange={(value) =>
+                  handleFilterChange(
+                    "department",
+                    value === "all" ? undefined : value,
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Role</label>
+              <Select
+                value={roleFilter || "all"}
+                onValueChange={(value) =>
+                  handleFilterChange(
+                    "role",
+                    value === "all" ? undefined : value,
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="EMP">Employee</SelectItem>
+                  <SelectItem value="PM">Project Manager</SelectItem>
+                  <SelectItem value="HR">HR Executive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isPM && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Department</label>
+                <label className="text-sm font-medium">Project</label>
                 <Select
-                  value={departmentFilter || "all"}
+                  value={projectFilter || "all"}
                   onValueChange={(value) =>
-                    handleFilterChange(
-                      "department",
-                      value === "all" ? undefined : value,
-                    )
+                    setProjectFilter(value === "all" ? undefined : value)
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="All departments" />
+                    <SelectValue placeholder="All employees" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Departments</SelectItem>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id}>
-                        {dept.name}
+                    <SelectItem value="all">All Employees</SelectItem>
+                    {projects.map((proj) => (
+                      <SelectItem key={proj.id} value={proj.id}>
+                        {proj.project_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+            )}
+          </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Role</label>
-                <Select
-                  value={roleFilter || "all"}
-                  onValueChange={(value) =>
-                    handleFilterChange(
-                      "role",
-                      value === "all" ? undefined : value,
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All roles" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
-                    <SelectItem value="EMP">Employee</SelectItem>
-                    <SelectItem value="PM">Project Manager</SelectItem>
-                    <SelectItem value="HR">HR Executive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          {/* Data Table with Server-Side Pagination */}
+          {loading ? (
+            <div className="text-center py-8">
+              <LoadingPage />
             </div>
-
-            {/* Data Table with Server-Side Pagination */}
-            {loading ? (
-              <div className="text-center py-8">
-                <LoadingPage />
-              </div>
-            ) : (
-              <>
-                <div className="border rounded-md overflow-hidden">
-                  <Table>
-                    <TableHeader>
+          ) : (
+            <>
+              <div className="border rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {getColumns().map((column) => (
+                        <TableHead key={column.key}>{column.header}</TableHead>
+                      ))}
+                      {isHR && (
+                        <TableHead className="text-right">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {employees.length === 0 ? (
                       <TableRow>
-                        {getColumns().map((column) => (
-                          <TableHead key={column.key}>
-                            {column.header}
-                          </TableHead>
-                        ))}
-                        {isHR && (
-                          <TableHead className="text-right">Actions</TableHead>
-                        )}
+                        <TableCell
+                          colSpan={getColumns().length + (isHR ? 1 : 0)}
+                          className="text-center py-8 text-muted-foreground"
+                        >
+                          No employees found
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {employees.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={getColumns().length + (isHR ? 1 : 0)}
-                            className="text-center py-8 text-muted-foreground"
-                          >
-                            No employees found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        employees.map((emp) => (
-                          <TableRow
-                            key={emp.id}
-                            onClick={() => handleRowClick(emp)}
-                            className="cursor-pointer"
-                          >
-                            {getColumns().map((column) => (
-                              <TableCell key={column.key}>
-                                {column.render
-                                  ? column.render(emp)
-                                  : (emp[column.key as keyof Employee] ??
-                                    "N/A")}
-                              </TableCell>
-                            ))}
-                            {isHR && (
-                              <TableCell className="text-right">
-                                <div className="flex gap-2 justify-end">
+                    ) : (
+                      employees.map((emp) => (
+                        <TableRow
+                          key={emp.id}
+                          onClick={() => handleRowClick(emp)}
+                          className="cursor-pointer"
+                        >
+                          {getColumns().map((column) => (
+                            <TableCell key={column.key}>
+                              {column.render
+                                ? column.render(emp)
+                                : (emp[column.key as keyof Employee] ?? "N/A")}
+                            </TableCell>
+                          ))}
+                          {isHR && (
+                            <TableCell className="text-right">
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEdit(emp);
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                {emp.status === "ACTIVE" && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleEdit(emp);
+                                      handleExitClick(emp);
                                     }}
                                   >
-                                    <Pencil className="h-4 w-4" />
+                                    <LogOut className="h-4 w-4" />
                                   </Button>
-                                  {emp.status === "ACTIVE" && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleExitClick(emp);
-                                      }}
-                                    >
-                                      <LogOut className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            )}
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                                )}
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
 
-                {/* Pagination Controls */}
-                <PaginationControls
-                  currentPage={currentPage}
-                  pageSize={pageSize}
-                  total={total}
-                  onPageChange={setCurrentPage}
-                  itemName="employees"
-                />
-              </>
-            )}
-          </CardContent>
-        </Card>
+              {/* Pagination Controls */}
+              <PaginationControls
+                currentPage={currentPage}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setCurrentPage}
+                itemName="employees"
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Exit Employee Modal */}
-        {selectedEmployee && (
-          <ExitEmployeeModal
-            open={exitModalOpen}
-            onOpenChange={setExitModalOpen}
-            employee={selectedEmployee || undefined}
-            onSuccess={handleExitSuccess}
-          />
-        )}
-      </div>
-    );
-  }
+      {/* Exit Employee Modal */}
+      {selectedEmployee && (
+        <ExitEmployeeModal
+          open={exitModalOpen}
+          onOpenChange={setExitModalOpen}
+          employee={selectedEmployee || undefined}
+          onSuccess={handleExitSuccess}
+        />
+      )}
+    </div>
+  );
+}

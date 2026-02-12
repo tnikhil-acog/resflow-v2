@@ -179,6 +179,65 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Get project details for task description
+    const [projectDetails] = await db
+      .select({
+        project_name: schema.projects.project_name,
+        project_code: schema.projects.project_code,
+      })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, project_id));
+
+    // Get requester details for task description
+    const [requesterDetails] = await db
+      .select({
+        full_name: schema.employees.full_name,
+        employee_code: schema.employees.employee_code,
+      })
+      .from(schema.employees)
+      .where(eq(schema.employees.id, user.id));
+
+    // Get skill names for task description
+    const skillNames = await db
+      .select({
+        skill_name: schema.skills.skill_name,
+      })
+      .from(schema.skills)
+      .where(inArray(schema.skills.skill_id, skill_ids));
+
+    const skillNamesStr = skillNames.map((s) => s.skill_name).join(", ");
+
+    // Get all HR executives to assign the task
+    const hrExecutives = await db
+      .select({
+        id: schema.employees.id,
+      })
+      .from(schema.employees)
+      .where(
+        and(
+          eq(schema.employees.employee_role, "HR"),
+          eq(schema.employees.status, "ACTIVE"),
+        ),
+      );
+
+    // Create a task for each HR executive
+    const taskDescription = `Review resource demand: ${requesterDetails?.full_name || "PM"} (${requesterDetails?.employee_code || user.id}) requested ${role_required} for "${projectDetails?.project_name || project_id}" (Skills: ${skillNamesStr || "N/A"}) starting ${startDateStr}`;
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days
+
+    for (const hr of hrExecutives) {
+      await db.insert(schema.tasks).values({
+        owner_id: hr.id,
+        entity_type: "DEMAND",
+        entity_id: result.id,
+        description: taskDescription,
+        due_on: dueDate.toISOString().split("T")[0], // Format as YYYY-MM-DD
+        assigned_by: user.id,
+        status: "DUE",
+      });
+    }
+
     return successResponse(
       {
         id: result.id,
@@ -189,6 +248,7 @@ export async function POST(req: NextRequest) {
         requested_by: result.requested_by,
         demand_status: result.demand_status,
         created_at: result.created_at,
+        message: `Demand created successfully. ${hrExecutives.length} approval task(s) created for HR.`,
       },
       201,
     );

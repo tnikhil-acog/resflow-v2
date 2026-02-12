@@ -59,8 +59,8 @@ function LoginForm() {
         // Use auth context to store credentials
         login(data.token, data.user);
 
-        // Redirect to original destination or dashboard
-        const redirect = searchParams.get("redirect") || "/dashboard";
+        // Redirect to original destination or tasks page
+        const redirect = searchParams.get("redirect") || "/tasks";
         router.push(redirect);
       } else {
         const errorMsg = data.message || data.error || "Invalid credentials";
@@ -138,7 +138,7 @@ function LoginForm() {
               </Button>
             </form>
 
-            <div className="mt-6 pt-6 border-t border-border">
+            {/* <div className="mt-6 pt-6 border-t border-border">
               <p className="text-xs text-muted-foreground mb-2">
                 Test Credentials:
               </p>
@@ -155,7 +155,7 @@ function LoginForm() {
                   test123
                 </p>
               </div>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
       </div>

@@ -71,7 +71,7 @@ export default function ReportDetailPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setUserRole(data.user.role);
+        setUserRole(data.employee_role);
       }
     } catch (error) {
       console.error("Error fetching user role:", error);
