@@ -22,6 +22,7 @@ import {
   User,
   FileText,
   Tag,
+  ExternalLink,
 } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
 import {
@@ -185,6 +186,76 @@ export default function TaskDetailPage() {
     (user?.employee_role === "hr_executive" || task.owner_id === user?.id);
 
   const canDelete = user?.employee_role === "hr_executive";
+
+  // Helper function to get action button based on entity type
+  const getTaskActionButton = () => {
+    if (!task || !task.entity_type || task.status === "COMPLETED") return null;
+
+    // Include task ID in all redirect URLs
+    const taskIdParam = `taskId=${task.id}`;
+
+    switch (task.entity_type) {
+      case "EMPLOYEE_SKILL":
+        if (
+          user?.employee_role === "hr_executive" ||
+          user?.employee_role === "project_manager"
+        ) {
+          return {
+            label: "Review Skill Request",
+            href: `/approvals?type=skill&${taskIdParam}`,
+            description: "Go to approvals page to review this skill request",
+          };
+        }
+        break;
+
+      case "DEMAND":
+        // Check if this is an approval task or allocation task based on description
+        const isAllocationTask =
+          task.description.includes("Allocate resources");
+        const isApprovalTask = task.description.includes(
+          "Review resource demand",
+        );
+
+        if (isApprovalTask && user?.employee_role === "hr_executive") {
+          return {
+            label: "Review Demand",
+            href: `/approvals?type=demand&${taskIdParam}`,
+            description: "Go to approvals page to review this resource demand",
+          };
+        }
+
+        if (isAllocationTask && user?.employee_role === "hr_executive") {
+          return {
+            label: "Allocate Resources",
+            href: `/allocations?${taskIdParam}`,
+            description:
+              "Go to allocations page to assign resources for this demand",
+          };
+        }
+        break;
+
+      case "DAILY_PROJECT_LOG":
+        return {
+          label: "Log Work",
+          href: `/logs?${taskIdParam}`,
+          description: "Go to logs page to submit your daily work log",
+        };
+
+      case "REPORT":
+        return {
+          label: "Submit Report",
+          href: `/reports?${taskIdParam}`,
+          description: "Go to reports page to submit your weekly report",
+        };
+
+      default:
+        return null;
+    }
+
+    return null;
+  };
+
+  const taskAction = getTaskActionButton();
 
   if (loading) return <LoadingPage />;
 
@@ -368,6 +439,30 @@ export default function TaskDetailPage() {
                             {task.entity_id}
                           </p>
                         </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Action Button - Show task-specific action */}
+                {taskAction && task.status === "DUE" && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-medium">Quick Action</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {taskAction.description}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => router.push(taskAction.href)}
+                          className="bg-primary hover:bg-primary/90"
+                        >
+                          {taskAction.label}
+                          <ExternalLink className="ml-2 h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </>

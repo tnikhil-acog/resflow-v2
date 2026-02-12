@@ -47,7 +47,7 @@ export function AppSidebar() {
   // Combine all items into a single flat list
   const allItems = [
     ...filteredWorkTracking.filter((item) => item.title === "Tasks"),
-    ...filteredMain, // Dashboard
+    ...filteredMain, // Analytics
     ...filteredWorkTracking.filter((item) => item.title !== "Tasks"),
     ...filteredResources,
     ...filteredGovernance,
@@ -60,7 +60,9 @@ export function AppSidebar() {
     return (
       <Sidebar className="border-r bg-sidebar">
         <SidebarHeader className="border-b border-sidebar-border px-6 py-5">
-          <h2 className="text-xl font-bold text-sidebar-primary tracking-tight">ResFlow</h2>
+          <h2 className="text-xl font-bold text-sidebar-primary tracking-tight">
+            ResFlow
+          </h2>
         </SidebarHeader>
         <SidebarContent>
           <div className="flex items-center justify-center p-4">
@@ -75,7 +77,9 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r bg-sidebar">
       <SidebarHeader className="border-b border-sidebar-border px-6 py-5">
-        <h2 className="text-xl font-bold text-sidebar-primary tracking-tight">ResFlow</h2>
+        <h2 className="text-xl font-bold text-sidebar-primary tracking-tight">
+          ResFlow
+        </h2>
       </SidebarHeader>
 
       <SidebarContent className="px-2">

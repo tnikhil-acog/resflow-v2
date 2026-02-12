@@ -94,17 +94,26 @@ function NewProjectContent() {
         setClients(clientsData.clients || []);
       }
 
-      // Fetch project managers
-      const empResponse = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Fetch project managers - use role filter and high limit
+      // Note: Database enum uses "PM" not "project_manager"
+      const empResponse = await fetch(
+        "/api/employees?role=PM&limit=999&status=ACTIVE",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
       if (empResponse.ok) {
         const empData = await empResponse.json();
-        const managersList = (empData.employees || []).filter(
-          (emp: any) => emp.employee_role === "PM",
-        );
+        console.log("Employees API response:", empData);
+        const managersList = (empData.employees || []).map((emp: any) => ({
+          id: emp.id,
+          full_name: emp.full_name || "",
+        }));
+        console.log("Project Managers list:", managersList);
         setManagers(managersList);
+      } else {
+        console.error("Failed to fetch employees:", empResponse.status);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -135,10 +144,6 @@ function NewProjectContent() {
       newErrors.project_name = "Project name is required";
     }
 
-    if (!formData.client_id) {
-      newErrors.client_id = "Client is required";
-    }
-
     if (!formData.project_manager_id) {
       newErrors.project_manager_id = "Project manager is required";
     }
@@ -164,13 +169,23 @@ function NewProjectContent() {
     try {
       const token = localStorage.getItem("auth_token");
 
+      // Extract project type from first letter of project code (in uppercase)
+      const projectType = formData.project_code.trim().charAt(0).toUpperCase();
+      console.log("Project Code:", formData.project_code.trim());
+      console.log("Extracted Project Type:", projectType);
+
       const payload: any = {
         project_code: formData.project_code.trim(),
         project_name: formData.project_name.trim(),
-        client_id: formData.client_id,
+        project_type: projectType,
         project_manager_id: formData.project_manager_id,
         started_on: formData.started_on,
       };
+
+      // Add client_id only if provided
+      if (formData.client_id) {
+        payload.client_id = formData.client_id;
+      }
 
       // Add optional fields
       if (formData.short_description)
@@ -180,6 +195,8 @@ function NewProjectContent() {
       if (formData.pitch_deck_url)
         payload.pitch_deck_url = formData.pitch_deck_url.trim();
       if (formData.github_url) payload.github_url = formData.github_url.trim();
+
+      console.log("Create Project Payload:", payload);
 
       const response = await fetch("/api/projects", {
         method: "POST",

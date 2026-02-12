@@ -70,6 +70,12 @@ function ProjectsListContent() {
   const [searchInput, setSearchInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // Metrics state
+  const [activeCount, setActiveCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [onHoldCount, setOnHoldCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
@@ -93,11 +99,59 @@ function ProjectsListContent() {
 
   useEffect(() => {
     fetchManagers();
+    fetchProjectCounts();
   }, []);
 
   useEffect(() => {
     fetchProjects();
   }, [currentPage, statusFilter, managerFilter, searchQuery]);
+
+  const fetchProjectCounts = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+
+      // Fetch total count (all projects)
+      const totalRes = await fetch(`/api/projects?limit=0`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (totalRes.ok) {
+        const totalData = await totalRes.json();
+        setTotalCount(totalData.total || 0);
+      }
+
+      // Fetch active count
+      const activeRes = await fetch(`/api/projects?status=ACTIVE&limit=0`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        setActiveCount(activeData.total || 0);
+      }
+
+      // Fetch completed count
+      const completedRes = await fetch(
+        `/api/projects?status=COMPLETED&limit=0`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (completedRes.ok) {
+        const completedData = await completedRes.json();
+        setCompletedCount(completedData.total || 0);
+      }
+
+      // Fetch on hold count
+      const onHoldRes = await fetch(`/api/projects?status=ON_HOLD&limit=0`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (onHoldRes.ok) {
+        const onHoldData = await onHoldRes.json();
+        setOnHoldCount(onHoldData.total || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching project counts:", error);
+    }
+  };
 
   const fetchManagers = async () => {
     try {
@@ -214,50 +268,56 @@ function ProjectsListContent() {
         <Card className="group relative overflow-hidden border-l-4 border-l-blue-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-blue-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Projects</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Projects
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{total}</div>
+            <div className="text-2xl font-bold">{totalCount}</div>
             <p className="text-xs text-muted-foreground mt-1">All projects</p>
           </CardContent>
         </Card>
-        
+
         <Card className="group relative overflow-hidden border-l-4 border-l-emerald-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-emerald-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Projects</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Active Projects
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {projects.filter(p => p.status === 'ACTIVE').length}
-            </div>
+            <div className="text-2xl font-bold">{activeCount}</div>
             <p className="text-xs text-muted-foreground mt-1">In progress</p>
           </CardContent>
         </Card>
-        
+
         <Card className="group relative overflow-hidden border-l-4 border-l-violet-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-violet-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Completed
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {projects.filter(p => p.status === 'COMPLETED').length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Finished successfully</p>
+            <div className="text-2xl font-bold">{completedCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Finished successfully
+            </p>
           </CardContent>
         </Card>
-        
+
         <Card className="group relative overflow-hidden border-l-4 border-l-amber-500 hover:shadow-lg transition-all">
           <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-amber-500/10" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">On Hold</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              On Hold
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {projects.filter(p => p.status === 'ON_HOLD').length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Temporarily paused</p>
+            <div className="text-2xl font-bold">{onHoldCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Temporarily paused
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -354,12 +414,20 @@ function ProjectsListContent() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[120px]">Project Code</TableHead>
-                        <TableHead className="min-w-[200px]">Project Name</TableHead>
+                        <TableHead className="min-w-[120px]">
+                          Project Code
+                        </TableHead>
+                        <TableHead className="min-w-[200px]">
+                          Project Name
+                        </TableHead>
                         <TableHead className="min-w-[150px]">Client</TableHead>
-                        <TableHead className="min-w-[150px]">Project Manager</TableHead>
+                        <TableHead className="min-w-[150px]">
+                          Project Manager
+                        </TableHead>
                         <TableHead className="min-w-[100px]">Status</TableHead>
-                        <TableHead className="min-w-[120px]">Started On</TableHead>
+                        <TableHead className="min-w-[120px]">
+                          Started On
+                        </TableHead>
                         {(isHR || isPM) && (
                           <TableHead className="w-[80px]">Actions</TableHead>
                         )}
@@ -372,7 +440,9 @@ function ProjectsListContent() {
                           className="cursor-pointer hover:bg-accent/50"
                           onClick={() => handleRowClick(project)}
                         >
-                          <TableCell className="font-medium">{project.project_code}</TableCell>
+                          <TableCell className="font-medium">
+                            {project.project_code}
+                          </TableCell>
                           <TableCell>{project.project_name}</TableCell>
                           <TableCell>{project.client_name}</TableCell>
                           <TableCell>{project.project_manager_name}</TableCell>

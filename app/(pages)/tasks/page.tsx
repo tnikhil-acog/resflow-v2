@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +18,19 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, List, Grid3x3, ArrowUpDown, Filter } from "lucide-react";
+import {
+  Plus,
+  Search,
+  List,
+  Grid3x3,
+  ArrowUpDown,
+  Filter,
+  ExternalLink,
+  CheckCircle2,
+  Clock,
+  FileText,
+  Calendar,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,12 +54,62 @@ export default function TasksPage() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"my_tasks" | "assigned_by_me">(
     "my_tasks",
   );
+  const router = useRouter();
+
+  // Helper function to get quick action for a task
+  const getTaskQuickAction = (task: Task) => {
+    if (!task.entity_type || task.status === "COMPLETED") return null;
+
+    // Include task ID in all redirect URLs
+    const taskIdParam = `taskId=${task.id}`;
+
+    switch (task.entity_type) {
+      case "EMPLOYEE_SKILL":
+        if (
+          user?.employee_role === "hr_executive" ||
+          user?.employee_role === "project_manager"
+        ) {
+          return {
+            label: "Review",
+            href: `/approvals?type=skill&${taskIdParam}`,
+          };
+        }
+        break;
+
+      case "DEMAND":
+        const isAllocationTask =
+          task.description.includes("Allocate resources");
+        const isApprovalTask = task.description.includes(
+          "Review resource demand",
+        );
+
+        if (isApprovalTask && user?.employee_role === "hr_executive") {
+          return {
+            label: "Review",
+            href: `/approvals?type=demand&${taskIdParam}`,
+          };
+        }
+
+        if (isAllocationTask && user?.employee_role === "hr_executive") {
+          return { label: "Allocate", href: `/allocations?${taskIdParam}` };
+        }
+        break;
+
+      case "DAILY_PROJECT_LOG":
+        return { label: "Log Work", href: `/logs?${taskIdParam}` };
+
+      case "REPORT":
+        return { label: "Submit Report", href: `/reports?${taskIdParam}` };
+    }
+
+    return null;
+  };
 
   useEffect(() => {
     fetchTasks();
@@ -137,6 +200,77 @@ export default function TasksPage() {
             </Button>
           </Link>
         )}
+      </div>
+
+      {/* Metrics Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">
+                  Pending Tasks
+                </p>
+                <p className="text-2xl font-semibold">
+                  {tasks.filter((t) => t.status === "DUE").length}
+                </p>
+              </div>
+              <Clock className="h-8 w-8 text-orange-500 opacity-50" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Completed</p>
+                <p className="text-2xl font-semibold">
+                  {tasks.filter((t) => t.status === "COMPLETED").length}
+                </p>
+              </div>
+              <CheckCircle2 className="h-8 w-8 text-green-500 opacity-50" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="shadow-sm cursor-pointer hover:shadow-md transition-all border-2 border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 hover:border-blue-400 dark:hover:border-blue-700"
+          onClick={() => router.push("/logs")}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-1">
+                  Log Work
+                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  Quick action →
+                </p>
+              </div>
+              <Calendar className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="shadow-sm cursor-pointer hover:shadow-md transition-all border-2 border-purple-200 dark:border-purple-900 bg-purple-50/50 dark:bg-purple-950/20 hover:border-purple-400 dark:hover:border-purple-700"
+          onClick={() => router.push("/reports")}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-purple-700 dark:text-purple-300 mb-1">
+                  Submit Report
+                </p>
+                <p className="text-xs text-purple-600 dark:text-purple-400">
+                  Quick action →
+                </p>
+              </div>
+              <FileText className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabs for My Tasks and Tasks I Assigned */}
@@ -237,46 +371,67 @@ export default function TasksPage() {
                       <TableHead>Assigned To</TableHead>
                       <TableHead>Deadline</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-32">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredTasks.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={7}
                           className="text-center py-8 text-muted-foreground"
                         >
                           No tasks found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredTasks.map((task) => (
-                        <TableRow key={task.id}>
-                          <TableCell>
-                            <Checkbox checked={task.status === "COMPLETED"} />
-                          </TableCell>
-                          <TableCell>
-                            <Link
-                              href={`/tasks/${task.id}`}
-                              className="text-sm hover:underline font-medium"
-                            >
-                              {task.description}
-                            </Link>
-                          </TableCell>
-                          {/* <TableCell>
+                      filteredTasks.map((task) => {
+                        const quickAction = getTaskQuickAction(task);
+                        return (
+                          <TableRow key={task.id}>
+                            <TableCell>
+                              <Checkbox checked={task.status === "COMPLETED"} />
+                            </TableCell>
+                            <TableCell>
+                              <Link
+                                href={`/tasks/${task.id}`}
+                                className="text-sm hover:underline font-medium"
+                              >
+                                {task.description}
+                              </Link>
+                            </TableCell>
+                            {/* <TableCell>
                             <Badge variant="outline" className="text-xs">
                               {task.entity_type}
                             </Badge>
                           </TableCell> */}
-                          <TableCell className="text-sm text-muted-foreground">
-                            {task.owner_name}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDate(task.due_on)}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(task.status)}</TableCell>
-                        </TableRow>
-                      ))
+                            <TableCell className="text-sm text-muted-foreground">
+                              {task.owner_name}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDate(task.due_on)}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(task.status)}</TableCell>
+                            <TableCell>
+                              {quickAction && task.status === "DUE" ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => router.push(quickAction.href)}
+                                  className="h-8"
+                                >
+                                  {quickAction.label}
+                                  <ExternalLink className="ml-1 h-3 w-3" />
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  -
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -329,6 +484,21 @@ export default function TasksPage() {
                           {formatDate(task.due_on)}
                         </span>
                       </div>
+                      {(() => {
+                        const quickAction = getTaskQuickAction(task);
+                        return quickAction && task.status === "DUE" ? (
+                          <div className="pt-2 border-t">
+                            <Button
+                              onClick={() => router.push(quickAction.href)}
+                              size="sm"
+                              className="w-full"
+                            >
+                              {quickAction.label}
+                              <ExternalLink className="ml-2 h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : null;
+                      })()}
                     </CardContent>
                   </Card>
                 ))

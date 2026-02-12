@@ -16,8 +16,10 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Eye, CalendarIcon, ClockIcon } from "lucide-react";
+import { Eye, CalendarIcon, ClockIcon, FileText } from "lucide-react";
 import { format } from "date-fns";
+import { useAuth } from "@/lib/auth-context";
+import { ProtectedRoute } from "@/components/protected-route";
 
 interface Employee {
   id: string;
@@ -43,45 +45,61 @@ interface Report {
   };
 }
 
+interface PhaseReport {
+  id: string;
+  phase_id: string;
+  content: string;
+  submitted_by: string;
+  submitted_at: string;
+  phase_name: string;
+  project_code: string;
+  project_name: string;
+  submitter_name: string;
+}
+
 export default function ReportsPage() {
+  return (
+    <ProtectedRoute
+      requiredRoles={["employee", "project_manager", "hr_executive"]}
+    >
+      <ReportsContent />
+    </ProtectedRoute>
+  );
+}
+
+function ReportsContent() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState<Report[]>([]);
-  const [userRole, setUserRole] = useState<string>("");
+  const [phaseReports, setPhaseReports] = useState<PhaseReport[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [viewMode, setViewMode] = useState<"WEEKLY" | "PHASE">("WEEKLY");
 
   const [employeeFilter, setEmployeeFilter] = useState<string>("");
   const [reportTypeFilter, setReportTypeFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
-  useEffect(() => {
-    fetchUserRole();
-    fetchReports();
-  }, []);
+  const isPM = user?.employee_role === "project_manager";
+  const isHR = user?.employee_role === "hr_executive";
+  // const canViewPhaseReports = isPM || isHR;
+
+  const canViewPhaseReports = isPM || isHR;
 
   useEffect(() => {
-    if (userRole === "hr_executive" || userRole === "project_manager") {
+    if (viewMode === "WEEKLY") {
+      fetchReports();
+    } else {
+      fetchPhaseReports();
+    }
+  }, [viewMode, employeeFilter, reportTypeFilter, startDate, endDate]);
+
+  useEffect(() => {
+    if (isHR || isPM) {
       fetchEmployees();
     }
-  }, [userRole]);
-
-  async function fetchUserRole() {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUserRole(data.employee_role);
-      }
-    } catch (error) {
-      console.error("Error fetching user role:", error);
-    }
-  }
+  }, [isHR, isPM]);
 
   async function fetchEmployees() {
     try {
@@ -93,10 +111,12 @@ export default function ReportsPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setEmployees(data);
+        // Ensure data is an array
+        setEmployees(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error("Error fetching employees:", error);
+      setEmployees([]); // Set to empty array on error
     }
   }
 
@@ -132,6 +152,39 @@ export default function ReportsPage() {
       toast({
         title: "Error",
         description: "Failed to fetch reports.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchPhaseReports() {
+    try {
+      setLoading(true);
+
+      const token = localStorage.getItem("auth_token");
+      const params = new URLSearchParams();
+
+      // PM sees only their project's phase reports
+      // HR sees all phase reports
+      const response = await fetch(`/api/phase-reports?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch phase reports");
+      }
+
+      const data = await response.json();
+      setPhaseReports(data.reports || data || []);
+    } catch (error) {
+      console.error("Error fetching phase reports:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch phase reports.",
         variant: "destructive",
       });
     } finally {
@@ -189,12 +242,33 @@ export default function ReportsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Filter Reports</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Filter Reports</CardTitle>
+            {canViewPhaseReports && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "WEEKLY" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("WEEKLY")}
+                >
+                  <ClockIcon className="h-4 w-4 mr-2" />
+                  Weekly Reports
+                </Button>
+                <Button
+                  variant={viewMode === "PHASE" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("PHASE")}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Phase Reports
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {(userRole === "hr_executive" ||
-              userRole === "project_manager") && (
+            {viewMode === "WEEKLY" && (isHR || isPM) && (
               <div className="space-y-2">
                 <Label htmlFor="employee-filter">Employee</Label>
                 <Select
@@ -206,11 +280,12 @@ export default function ReportsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">All employees</SelectItem>
-                    {employees.map((emp) => (
-                      <SelectItem key={emp.id} value={emp.id}>
-                        {emp.employee_code} - {emp.employee_name}
-                      </SelectItem>
-                    ))}
+                    {Array.isArray(employees) &&
+                      employees.map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id}>
+                          {emp.employee_code} - {emp.employee_name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -248,20 +323,93 @@ export default function ReportsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Reports</CardTitle>
+          <CardTitle>
+            {viewMode === "WEEKLY" ? "Weekly Reports" : "Phase Reports"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Spinner className="h-8 w-8" />
             </div>
-          ) : reports.length === 0 ? (
+          ) : viewMode === "WEEKLY" ? (
+            reports.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No weekly reports found</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reports.map((report) => (
+                  <Card
+                    key={report.id}
+                    className="hover:shadow-md transition-shadow"
+                  >
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 space-y-2">
+                          {(isHR || isPM) && (
+                            <div>
+                              <div className="font-medium">
+                                {report.employee.employee_name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {report.employee.employee_code}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-4">
+                            <Badge
+                              variant={
+                                report.report_type === "WEEKLY"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
+                              {report.report_type}
+                            </Badge>
+
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <CalendarIcon className="h-4 w-4" />
+                              {formatDateRange(report)}
+                            </div>
+
+                            <div className="flex items-center gap-2 text-sm">
+                              <ClockIcon className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">
+                                {getTotalHours(report).toFixed(2)} hrs
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-muted-foreground">
+                            Submitted on{" "}
+                            {format(
+                              new Date(report.created_at),
+                              "MMM dd, yyyy HH:mm",
+                            )}
+                          </div>
+                        </div>
+
+                        <Link href={`/reports/${report.id}`}>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )
+          ) : phaseReports.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <p>No reports found</p>
+              <p>No phase reports found</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {reports.map((report) => (
+              {phaseReports.map((report) => (
                 <Card
                   key={report.id}
                   className="hover:shadow-md transition-shadow"
@@ -269,52 +417,40 @@ export default function ReportsPage() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 space-y-2">
-                        {(userRole === "hr_executive" ||
-                          userRole === "project_manager") && (
-                          <div>
-                            <div className="font-medium">
-                              {report.employee.employee_name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {report.employee.employee_code}
-                            </div>
+                        <div>
+                          <div className="font-medium">
+                            {report.project_code} - {report.project_name}
                           </div>
-                        )}
-
-                        <div className="flex items-center gap-4">
-                          <Badge
-                            variant={
-                              report.report_type === "WEEKLY"
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {report.report_type}
-                          </Badge>
-
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <CalendarIcon className="h-4 w-4" />
-                            {formatDateRange(report)}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-sm">
-                            <ClockIcon className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
-                              {getTotalHours(report).toFixed(2)} hrs
-                            </span>
+                          <div className="text-sm text-muted-foreground">
+                            Phase: {report.phase_name}
                           </div>
                         </div>
 
-                        <div className="text-xs text-muted-foreground">
-                          Submitted on{" "}
-                          {format(
-                            new Date(report.created_at),
-                            "MMM dd, yyyy HH:mm",
-                          )}
+                        <div className="flex items-center gap-4">
+                          <Badge variant="default">
+                            <FileText className="h-3 w-3 mr-1" />
+                            Phase Report
+                          </Badge>
+
+                          <div className="text-sm text-muted-foreground">
+                            By: {report.submitter_name}
+                          </div>
+
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <CalendarIcon className="h-3 w-3" />
+                            {format(
+                              new Date(report.submitted_at),
+                              "MMM dd, yyyy HH:mm",
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-sm mt-2 line-clamp-2">
+                          {report.content}
                         </div>
                       </div>
 
-                      <Link href={`/reports/${report.id}`}>
+                      <Link href={`/reports/phase/${report.id}`}>
                         <Button variant="ghost" size="sm">
                           <Eye className="h-4 w-4 mr-2" />
                           View

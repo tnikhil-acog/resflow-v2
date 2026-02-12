@@ -32,6 +32,11 @@ interface Skill {
   skill_department: string;
 }
 
+interface Department {
+  id: string;
+  department_name: string;
+}
+
 interface Demand {
   id: string;
   project_id: string;
@@ -79,6 +84,7 @@ function DemandDetailContent() {
   const [demand, setDemand] = useState<Demand | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -102,6 +108,7 @@ function DemandDetailContent() {
       fetchDemand();
       fetchProjects();
       fetchSkills();
+      fetchDepartments();
     }
   }, [id]);
 
@@ -117,12 +124,12 @@ function DemandDetailContent() {
       }
 
       const data = await response.json();
-      setDemand(data.demand);
+      setDemand(data);
       setFormData({
-        project_id: data.demand.project_id,
-        role_required: data.demand.role_required,
-        skill_ids: data.demand.skill_ids || [],
-        start_date: data.demand.start_date,
+        project_id: data.project_id,
+        role_required: data.role_required,
+        skill_ids: data.skill_ids || [],
+        start_date: data.start_date,
       });
     } catch (error) {
       console.error("Error fetching demand:", error);
@@ -162,6 +169,22 @@ function DemandDetailContent() {
       }
     } catch (error) {
       console.error("Error fetching skills:", error);
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/departments", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDepartments(data.departments || []);
+      }
+    } catch (error) {
+      console.error("Error fetching departments:", error);
     }
   };
 
@@ -475,6 +498,7 @@ function DemandDetailContent() {
                   onChange={handleChange}
                   projects={projects}
                   skills={skills}
+                  departments={departments}
                   disabled={saving}
                 />
 

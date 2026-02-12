@@ -12,8 +12,25 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Save, X } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, RefreshCw } from "lucide-react";
 import { AllocationFormFields } from "@/components/forms/allocation-form-fields";
 import { LoadingPage } from "@/components/loading-spinner";
 
@@ -48,12 +65,14 @@ interface Allocation {
 
 interface AllocationFormData {
   employee_id: string | undefined;
+  employee_ids: string[];
   project_id: string | undefined;
   allocation_percentage: string;
   role: string;
   start_date: string;
   end_date: string;
   is_billable: boolean;
+  bulk_mode: boolean;
 }
 
 interface FormErrors {
@@ -89,15 +108,28 @@ function AllocationDetailContent() {
   );
   const [showCapacityWarning, setShowCapacityWarning] = useState(false);
 
+  // Transfer dialog state
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [transferData, setTransferData] = useState({
+    new_project_id: "",
+    transfer_date: "",
+  });
+  const [transferErrors, setTransferErrors] = useState<{
+    new_project_id?: string;
+    transfer_date?: string;
+  }>({});
+
   const [formData, setFormData] = useState<AllocationFormData>({
     employee_id: undefined,
+    employee_ids: [],
     project_id: undefined,
     allocation_percentage: "",
     role: "",
     start_date: "",
     end_date: "",
     is_billable: false,
-    // removed is_critical_resource
+    bulk_mode: false,
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -140,12 +172,14 @@ function AllocationDetailContent() {
       setAllocation(data.allocation);
       setFormData({
         employee_id: data.allocation.emp_id,
+        employee_ids: [],
         project_id: data.allocation.project_id,
         allocation_percentage: data.allocation.allocation_percentage.toString(),
         role: data.allocation.role,
         start_date: data.allocation.start_date,
         end_date: data.allocation.end_date || "",
         is_billable: data.allocation.is_billable,
+        bulk_mode: false,
       });
     } catch (error) {
       console.error("Error fetching allocation:", error);
@@ -207,7 +241,7 @@ function AllocationDetailContent() {
     }
   };
 
-  const handleChange = (field: string, value: string | boolean) => {
+  const handleChange = (field: string, value: string | boolean | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field as keyof FormErrors]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -297,16 +331,99 @@ function AllocationDetailContent() {
     if (allocation) {
       setFormData({
         employee_id: allocation.emp_id,
+        employee_ids: [],
         project_id: allocation.project_id,
         allocation_percentage: allocation.allocation_percentage.toString(),
         role: allocation.role,
         start_date: allocation.start_date,
         end_date: allocation.end_date || "",
         is_billable: allocation.is_billable,
+        bulk_mode: false,
       });
     }
     setErrors({});
     setIsEditing(false);
+  };
+
+  const validateTransfer = (): boolean => {
+    const newErrors: {
+      new_project_id?: string;
+      transfer_date?: string;
+    } = {};
+
+    if (!transferData.new_project_id) {
+      newErrors.new_project_id = "Please select a project";
+    }
+    if (!transferData.transfer_date) {
+      newErrors.transfer_date = "Transfer date is required";
+    } else if (allocation) {
+      const transferDate = new Date(transferData.transfer_date);
+      const startDate = new Date(allocation.start_date);
+      const endDate = allocation.end_date
+        ? new Date(allocation.end_date)
+        : null;
+
+      if (transferDate < startDate) {
+        newErrors.transfer_date =
+          "Transfer date must be after allocation start date";
+      }
+      if (endDate && transferDate > endDate) {
+        newErrors.transfer_date =
+          "Transfer date must be before allocation end date";
+      }
+    }
+
+    setTransferErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleTransfer = async () => {
+    if (!validateTransfer()) {
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/allocations/transfer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          allocation_id: id,
+          new_project_id: transferData.new_project_id,
+          transfer_date: transferData.transfer_date,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to transfer allocation");
+      }
+
+      toast.success("Allocation transferred successfully");
+      router.push("/allocations");
+    } catch (error) {
+      console.error("Error transferring allocation:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to transfer allocation",
+      );
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const openTransferDialog = () => {
+    setTransferData({
+      new_project_id: "",
+      transfer_date: new Date().toISOString().split("T")[0],
+    });
+    setTransferErrors({});
+    setShowTransferDialog(true);
   };
 
   if (loading) return <LoadingPage />;
@@ -327,10 +444,16 @@ function AllocationDetailContent() {
               </p>
             </div>
             {!isEditing && (
-              <Button onClick={() => setIsEditing(true)}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit Allocation
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={openTransferDialog}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Transfer to Another Project
+                </Button>
+                <Button onClick={() => setIsEditing(true)}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit Allocation
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -469,6 +592,93 @@ function AllocationDetailContent() {
           )}
         </div>
       </div>
+
+      {/* Transfer Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer to Another Project</DialogTitle>
+            <DialogDescription>
+              Move this employee allocation from {allocation.project_name} to a
+              new project. The current allocation will end on the transfer date,
+              and a new allocation will start.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new_project">
+                New Project <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={transferData.new_project_id}
+                onValueChange={(value) =>
+                  setTransferData((prev) => ({
+                    ...prev,
+                    new_project_id: value,
+                  }))
+                }
+              >
+                <SelectTrigger id="new_project">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects
+                    .filter((p) => p.id !== allocation.project_id)
+                    .map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.project_code} - {project.project_name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {transferErrors.new_project_id && (
+                <p className="text-sm text-destructive">
+                  {transferErrors.new_project_id}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="transfer_date">
+                Transfer Date <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="transfer_date"
+                type="date"
+                value={transferData.transfer_date}
+                onChange={(e) =>
+                  setTransferData((prev) => ({
+                    ...prev,
+                    transfer_date: e.target.value,
+                  }))
+                }
+                min={allocation.start_date}
+                max={allocation.end_date || undefined}
+              />
+              {transferErrors.transfer_date && (
+                <p className="text-sm text-destructive">
+                  {transferErrors.transfer_date}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                The current allocation will end on this date, and the new
+                allocation will start.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowTransferDialog(false)}
+              disabled={transferring}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleTransfer} disabled={transferring}>
+              {transferring ? "Transferring..." : "Transfer Allocation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

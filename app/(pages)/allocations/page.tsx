@@ -31,6 +31,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { PaginationControls } from "@/components/pagination-controls";
 import { EmptyState } from "@/components/empty-state";
+import { ProjectCombobox } from "@/components/project-combobox";
+import { EmployeeCombobox } from "@/components/employee-combobox";
 import { toast } from "sonner";
 import { Plus, Pencil, Search, FileText } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
@@ -50,18 +52,6 @@ interface Allocation {
   end_date?: string;
 }
 
-interface Employee {
-  id: string;
-  employee_code: string;
-  full_name: string;
-}
-
-interface Project {
-  id: string;
-  project_code: string;
-  project_name: string;
-}
-
 export default function AllocationsListPage() {
   return (
     <ProtectedRoute>
@@ -74,8 +64,6 @@ function AllocationsListContent() {
   const router = useRouter();
   const { user } = useAuth();
   const [allocations, setAllocations] = useState<Allocation[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search and pagination state
@@ -94,12 +82,6 @@ function AllocationsListContent() {
   const [activeOnlyFilter, setActiveOnlyFilter] = useState<string>("true");
 
   const isHR = user?.employee_role === "hr_executive";
-
-  // Fetch reference data only once
-  useEffect(() => {
-    fetchEmployees();
-    fetchProjects();
-  }, []);
 
   // Fetch allocations when filters, search or page changes
   useEffect(() => {
@@ -120,38 +102,6 @@ function AllocationsListContent() {
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleSearch();
-    }
-  };
-
-  const fetchEmployees = async () => {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setEmployees(data.employees || []);
-      }
-    } catch (error) {
-      console.error("Error fetching employees:", error);
-    }
-  };
-
-  const fetchProjects = async () => {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/projects", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data.projects || []);
-      }
-    } catch (error) {
-      console.error("Error fetching projects:", error);
     }
   };
 
@@ -238,46 +188,25 @@ function AllocationsListContent() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Project</label>
-                  <Select
-                    value={projectFilter}
+                  <ProjectCombobox
+                    value={projectFilter || "ALL"}
                     onValueChange={(v) =>
-                      setProjectFilter(v === "all" ? undefined : v)
+                      setProjectFilter(v === "ALL" ? undefined : v)
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All projects" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Projects</SelectItem>
-                      {projects.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.project_code} - {p.project_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="All projects"
+                    showAllOption={true}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Employee</label>
-                  <Select
+                  <EmployeeCombobox
                     value={employeeFilter}
                     onValueChange={(v) =>
-                      setEmployeeFilter(v === "all" ? undefined : v)
+                      setEmployeeFilter(v === "" ? undefined : v)
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All employees" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Employees</SelectItem>
-                      {employees.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.employee_code} - {e.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="All employees"
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -320,7 +249,7 @@ function AllocationsListContent() {
                         <TableHead>Billable</TableHead>
                         <TableHead>Duration</TableHead>
                         {isHR && (
-                          <TableHead className="w-[50px]">Actions</TableHead>
+                          <TableHead className="w-12.5">Actions</TableHead>
                         )}
                       </TableRow>
                     </TableHeader>

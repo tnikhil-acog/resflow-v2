@@ -27,7 +27,7 @@ import {
   validateRequiredFields,
   successResponse,
 } from "@/lib/api-helpers";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { employee_skill_id, action } = body;
+    const { employee_skill_id, action, task_id } = body;
 
     // Validate required fields
     const missingFields = validateRequiredFields(body, [
@@ -104,6 +104,83 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // Complete the skill approval task(s) for this employee skill
+      let completedTasksCount = 0;
+
+      if (task_id) {
+        // If task_id is provided, complete only that specific task
+        const [specificTask] = await db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.id, task_id),
+              eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+              eq(schema.tasks.entity_id, employee_skill_id),
+              eq(schema.tasks.status, "DUE"),
+            ),
+          );
+
+        if (specificTask) {
+          await db
+            .update(schema.tasks)
+            .set({ status: "COMPLETED" })
+            .where(eq(schema.tasks.id, task_id));
+
+          await createAuditLog({
+            entity_type: "TASK",
+            entity_id: task_id,
+            operation: "UPDATE",
+            changed_by: user.id,
+            changed_fields: {
+              status: "COMPLETED",
+              completion_reason: "Skill request approved",
+            },
+          });
+          completedTasksCount = 1;
+        }
+      } else {
+        // Otherwise, complete all matching tasks (backward compatibility)
+        const skillApprovalTasks = await db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+              eq(schema.tasks.entity_id, employee_skill_id),
+              eq(schema.tasks.status, "DUE"),
+            ),
+          );
+
+        if (skillApprovalTasks.length > 0) {
+          await db
+            .update(schema.tasks)
+            .set({ status: "COMPLETED" })
+            .where(
+              and(
+                eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+                eq(schema.tasks.entity_id, employee_skill_id),
+                eq(schema.tasks.status, "DUE"),
+              ),
+            );
+
+          // Create audit logs for task completions
+          for (const task of skillApprovalTasks) {
+            await createAuditLog({
+              entity_type: "TASK",
+              entity_id: task.id,
+              operation: "UPDATE",
+              changed_by: user.id,
+              changed_fields: {
+                status: "COMPLETED",
+                completion_reason: "Skill request approved",
+              },
+            });
+            completedTasksCount++;
+          }
+        }
+      }
+
       return successResponse({
         id: updated.id,
         emp_id: updated.emp_id,
@@ -112,6 +189,11 @@ export async function POST(req: NextRequest) {
         approved_by: updated.approved_by,
         approved_at: updated.approved_at,
         status: "APPROVED",
+        approval_tasks_completed: completedTasksCount,
+        message:
+          completedTasksCount > 0
+            ? `Skill approved. ${completedTasksCount} approval task(s) completed.`
+            : "Skill approved.",
       });
     } else {
       // Reject the skill
@@ -128,7 +210,87 @@ export async function POST(req: NextRequest) {
         changed_fields: {},
       });
 
-      return successResponse({ message: "Skill request rejected" });
+      // Complete the skill approval task(s) for this employee skill (rejection)
+      let completedTasksCount = 0;
+
+      if (task_id) {
+        // If task_id is provided, complete only that specific task
+        const [specificTask] = await db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.id, task_id),
+              eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+              eq(schema.tasks.entity_id, employee_skill_id),
+              eq(schema.tasks.status, "DUE"),
+            ),
+          );
+
+        if (specificTask) {
+          await db
+            .update(schema.tasks)
+            .set({ status: "COMPLETED" })
+            .where(eq(schema.tasks.id, task_id));
+
+          await createAuditLog({
+            entity_type: "TASK",
+            entity_id: task_id,
+            operation: "UPDATE",
+            changed_by: user.id,
+            changed_fields: {
+              status: "COMPLETED",
+              completion_reason: "Skill request rejected",
+            },
+          });
+          completedTasksCount = 1;
+        }
+      } else {
+        // Otherwise, complete all matching tasks (backward compatibility)
+        const skillApprovalTasks = await db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+              eq(schema.tasks.entity_id, employee_skill_id),
+              eq(schema.tasks.status, "DUE"),
+            ),
+          );
+
+        if (skillApprovalTasks.length > 0) {
+          await db
+            .update(schema.tasks)
+            .set({ status: "COMPLETED" })
+            .where(
+              and(
+                eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+                eq(schema.tasks.entity_id, employee_skill_id),
+                eq(schema.tasks.status, "DUE"),
+              ),
+            );
+
+          // Create audit logs for task completions
+          for (const task of skillApprovalTasks) {
+            await createAuditLog({
+              entity_type: "TASK",
+              entity_id: task.id,
+              operation: "UPDATE",
+              changed_by: user.id,
+              changed_fields: {
+                status: "COMPLETED",
+                completion_reason: "Skill request rejected",
+              },
+            });
+            completedTasksCount++;
+          }
+        }
+      }
+
+      return successResponse({
+        message: "Skill request rejected",
+        approval_tasks_completed: completedTasksCount,
+      });
     }
   } catch (error) {
     console.error("Error approving/rejecting skill:", error);

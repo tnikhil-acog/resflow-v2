@@ -26,7 +26,67 @@ import {
   validateRequiredFields,
   successResponse,
 } from "@/lib/api-helpers";
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+
+// GET /api/phase-reports
+// Allowed Roles: project_manager, hr_executive
+// Returns phase reports with project and phase details
+// - hr_executive: Can view all phase reports
+// - project_manager: Can only view phase reports for their projects
+export async function GET(req: NextRequest) {
+  try {
+    const user = await getCurrentUser(req);
+
+    if (!checkRole(user, ["project_manager", "hr_executive"])) {
+      return ErrorResponses.accessDenied();
+    }
+
+    // Build where conditions
+    const whereConditions = [];
+
+    // If project manager, only show reports for their projects
+    if (checkRole(user, ["project_manager"])) {
+      whereConditions.push(eq(schema.projects.project_manager_id, user.id));
+    }
+
+    const whereClause =
+      whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+    // Build query to fetch phase reports with project and phase details
+    const reports = await db
+      .select({
+        id: schema.phaseReports.id,
+        phase_id: schema.phaseReports.phase_id,
+        content: schema.phaseReports.content,
+        submitted_by: schema.phaseReports.submitted_by,
+        submitted_at: schema.phaseReports.submitted_at,
+        phase_name: schema.phases.phase_name,
+        project_code: schema.projects.project_code,
+        project_name: schema.projects.project_name,
+        submitter_name: schema.employees.full_name,
+      })
+      .from(schema.phaseReports)
+      .innerJoin(
+        schema.phases,
+        eq(schema.phaseReports.phase_id, schema.phases.id),
+      )
+      .innerJoin(
+        schema.projects,
+        eq(schema.phases.project_id, schema.projects.id),
+      )
+      .innerJoin(
+        schema.employees,
+        eq(schema.phaseReports.submitted_by, schema.employees.id),
+      )
+      .where(whereClause)
+      .orderBy(sql`${schema.phaseReports.submitted_at} DESC`);
+
+    return successResponse(reports);
+  } catch (error) {
+    console.error("Error fetching phase reports:", error);
+    return ErrorResponses.internalError();
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {

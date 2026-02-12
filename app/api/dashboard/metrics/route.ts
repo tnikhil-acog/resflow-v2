@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
     let missingReports = 0;
     let recentTasks: any[] = [];
     let weeklyHours = 0;
+    let totalEmployees = 0;
+    let teamMembers = 0;
+    let pendingApprovals = 0;
 
     // Role-based data fetching
     if (user.employee_role === "employee") {
@@ -43,6 +46,7 @@ export async function GET(req: NextRequest) {
           and(
             eq(schema.tasks.owner_id, user.id),
             eq(schema.tasks.status, "DUE"),
+            sql`${schema.tasks.due_on} IS NOT NULL`,
           ),
         );
       pendingTasks = pendingTasksResult[0]?.count || 0;
@@ -172,6 +176,9 @@ export async function GET(req: NextRequest) {
         teamMemberIds = [...new Set(teamMembers.map((m) => m.emp_id))];
       }
 
+      // Set team members count for PM
+      teamMembers = teamMemberIds.length;
+
       // Pending tasks for team
       if (teamMemberIds.length > 0) {
         const pendingTasksResult = await db
@@ -181,6 +188,7 @@ export async function GET(req: NextRequest) {
             and(
               inArray(schema.tasks.owner_id, teamMemberIds),
               eq(schema.tasks.status, "DUE"),
+              sql`${schema.tasks.due_on} IS NOT NULL`,
             ),
           );
         pendingTasks = pendingTasksResult[0]?.count || 0;
@@ -279,7 +287,12 @@ export async function GET(req: NextRequest) {
       const pendingTasksResult = await db
         .select({ count: sql<number>`cast(count(*) as integer)` })
         .from(schema.tasks)
-        .where(eq(schema.tasks.status, "DUE"));
+        .where(
+          and(
+            eq(schema.tasks.status, "DUE"),
+            sql`${schema.tasks.due_on} IS NOT NULL`,
+          ),
+        );
       pendingTasks = pendingTasksResult[0]?.count || 0;
 
       // All completed tasks
@@ -306,7 +319,7 @@ export async function GET(req: NextRequest) {
         .select({ count: sql<number>`cast(count(*) as integer)` })
         .from(schema.employees)
         .where(eq(schema.employees.status, "ACTIVE"));
-      const totalEmployees = allEmployeesResult[0]?.count || 0;
+      totalEmployees = allEmployeesResult[0]?.count || 0;
 
       // Employees who submitted reports this week
       const reportedEmployeesResult = await db
@@ -372,6 +385,9 @@ export async function GET(req: NextRequest) {
         activeProjects,
         missingReports,
         weeklyHours,
+        totalEmployees,
+        teamMembers,
+        pendingApprovals,
       },
       tasks: recentTasks,
       weekPeriod: {

@@ -83,6 +83,7 @@ function ProjectDetailContent() {
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [allocationsLoading, setAllocationsLoading] = useState(true);
+  const [hasShownPermissionError, setHasShownPermissionError] = useState(false);
 
   const isHR = user?.employee_role === "hr_executive";
   const isPM = user?.employee_role === "project_manager";
@@ -125,7 +126,8 @@ function ProjectDetailContent() {
       });
 
       if (!response.ok) {
-        if (response.status === 403) {
+        if (response.status === 403 && !hasShownPermissionError) {
+          setHasShownPermissionError(true);
           toast.error("You don't have permission to view this project");
           router.push("/projects");
           return;
@@ -186,6 +188,15 @@ function ProjectDetailContent() {
               <Badge variant={getStatusColor(project.status) as any}>
                 {project.status.replace("_", " ")}
               </Badge>
+              {(isHR || isPM) && (
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/projects/${projectId}/phases`)}
+                >
+                  <FolderKanban className="h-4 w-4 mr-2" />
+                  Phases
+                </Button>
+              )}
               {canEdit && (
                 <Button
                   onClick={() => router.push(`/projects/${projectId}/edit`)}
@@ -359,7 +370,7 @@ function ProjectDetailContent() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-6">
                 {allocationsLoading ? (
                   <div className="text-center py-8 text-sm text-muted-foreground">
                     Loading allocations...
@@ -382,73 +393,155 @@ function ProjectDetailContent() {
                     )}
                   </div>
                 ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Employee</TableHead>
-                          <TableHead>Role</TableHead>
-                          <TableHead>Allocation</TableHead>
-                          <TableHead>Billable</TableHead>
-                          <TableHead>Duration</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {allocations.map((allocation) => (
-                          <TableRow
-                            key={allocation.id}
-                            className="cursor-pointer"
-                            onClick={() =>
-                              router.push(`/employees/${allocation.emp_id}`)
-                            }
-                          >
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">
-                                  {allocation.employee_name}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {allocation.employee_code}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>{allocation.role}</TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">
-                                {allocation.allocation_percentage}%
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  allocation.is_billable ? "default" : "outline"
-                                }
-                              >
-                                {allocation.is_billable ? "Yes" : "No"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="text-sm">
-                                <div>
-                                  {new Date(
-                                    allocation.start_date,
-                                  ).toLocaleDateString()}
-                                </div>
-                                {allocation.end_date && (
-                                  <div className="text-xs text-muted-foreground">
-                                    to{" "}
-                                    {new Date(
-                                      allocation.end_date,
-                                    ).toLocaleDateString()}
-                                  </div>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <>
+                    {/* Current Allocations */}
+                    {allocations.filter((a) => !a.end_date).length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">
+                          Current Allocations
+                        </h3>
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Employee</TableHead>
+                                <TableHead>Role</TableHead>
+                                <TableHead>Allocation</TableHead>
+                                <TableHead>Billable</TableHead>
+                                <TableHead>Start Date</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {allocations
+                                .filter((a) => !a.end_date)
+                                .map((allocation) => (
+                                  <TableRow
+                                    key={allocation.id}
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() =>
+                                      router.push(
+                                        `/employees/${allocation.emp_id}`,
+                                      )
+                                    }
+                                  >
+                                    <TableCell>
+                                      <div>
+                                        <div className="font-medium">
+                                          {allocation.employee_name}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {allocation.employee_code}
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>{allocation.role}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="secondary">
+                                        {allocation.allocation_percentage}%
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={
+                                          allocation.is_billable
+                                            ? "default"
+                                            : "outline"
+                                        }
+                                      >
+                                        {allocation.is_billable ? "Yes" : "No"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      {new Date(
+                                        allocation.start_date,
+                                      ).toLocaleDateString()}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Previous Allocations */}
+                    {allocations.filter((a) => a.end_date).length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">
+                          Previous Allocations
+                        </h3>
+                        <div className="rounded-md border opacity-75">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Employee</TableHead>
+                                <TableHead>Role</TableHead>
+                                <TableHead>Allocation</TableHead>
+                                <TableHead>Billable</TableHead>
+                                <TableHead>Duration</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {allocations
+                                .filter((a) => a.end_date)
+                                .map((allocation) => (
+                                  <TableRow
+                                    key={allocation.id}
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() =>
+                                      router.push(
+                                        `/employees/${allocation.emp_id}`,
+                                      )
+                                    }
+                                  >
+                                    <TableCell>
+                                      <div>
+                                        <div className="font-medium">
+                                          {allocation.employee_name}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {allocation.employee_code}
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>{allocation.role}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="secondary">
+                                        {allocation.allocation_percentage}%
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={
+                                          allocation.is_billable
+                                            ? "default"
+                                            : "outline"
+                                        }
+                                      >
+                                        {allocation.is_billable ? "Yes" : "No"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="text-sm">
+                                        <div>
+                                          {new Date(
+                                            allocation.start_date,
+                                          ).toLocaleDateString()}{" "}
+                                          to{" "}
+                                          {new Date(
+                                            allocation.end_date ?? "",
+                                          ).toLocaleDateString()}
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import {
@@ -15,9 +15,22 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, Column } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { CheckCircle, XCircle } from "lucide-react";
+import { CheckCircle, XCircle, CheckCheck, XOctagon } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 interface SkillRequest {
   id: string;
@@ -55,6 +68,7 @@ export default function ApprovalsPage() {
 
 function ApprovalsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("skills");
   const [skillRequests, setSkillRequests] = useState<SkillRequest[]>([]);
@@ -62,10 +76,31 @@ function ApprovalsContent() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
+  // Bulk operations state
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
+  const [selectedDemands, setSelectedDemands] = useState<Set<string>>(
+    new Set(),
+  );
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectType, setRejectType] = useState<"skill" | "demand">("skill");
+
+  // Get taskId from URL if present
+  const taskId = searchParams.get("taskId");
+
   const isPM = user?.employee_role === "project_manager";
   const isHR = user?.employee_role === "hr_executive";
 
   useEffect(() => {
+    // Set active tab based on URL parameter
+    const typeParam = searchParams.get("type");
+    if (typeParam === "skill") {
+      setActiveTab("skills");
+    } else if (typeParam === "demand") {
+      setActiveTab("demands");
+    }
+
     fetchSkillRequests();
     if (isHR) {
       fetchDemandApprovals();
@@ -120,16 +155,23 @@ function ApprovalsContent() {
 
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employee-skills", {
-        method: "PUT",
+      const requestBody: any = {
+        action: approve ? "approve" : "reject",
+        employee_skill_id: skillRequestId,
+      };
+
+      // Include task_id if it was passed in the URL
+      if (taskId) {
+        requestBody.task_id = taskId;
+      }
+
+      const response = await fetch("/api/skills/approve", {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          action: approve ? "approve" : "reject",
-          id: skillRequestId,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -142,9 +184,17 @@ function ApprovalsContent() {
       }
 
       toast.success(
-        `Skill request ${approve ? "approved" : "rejected"} successfully`,
+        `Skill request ${approve ? "approved" : "rejected"} successfully${data.approval_tasks_completed ? ` (Task completed)` : ""}`,
       );
-      fetchSkillRequests();
+
+      // If task was completed, navigate back to tasks page
+      if (taskId && data.approval_tasks_completed > 0) {
+        setTimeout(() => {
+          router.push("/tasks");
+        }, 1500);
+      } else {
+        fetchSkillRequests();
+      }
     } catch (error) {
       console.error(
         `Error ${approve ? "approving" : "rejecting"} skill request:`,
@@ -168,17 +218,24 @@ function ApprovalsContent() {
 
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/demands", {
-        method: "PUT",
+
+      const requestBody: any = {
+        demand_id: demandId,
+        action: action === "FULFILLED" ? "approve" : "reject",
+      };
+
+      // Include task_id if it was passed in the URL
+      if (taskId) {
+        requestBody.task_id = taskId;
+      }
+
+      const response = await fetch("/api/demands/approve", {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          action: "update_status",
-          id: demandId,
-          demand_status: action,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -189,8 +246,21 @@ function ApprovalsContent() {
         );
       }
 
-      toast.success(`Demand ${action.toLowerCase()} successfully`);
-      fetchDemandApprovals();
+      toast.success(
+        `Demand ${action === "FULFILLED" ? "approved" : "rejected"} successfully${data.allocation_tasks_created ? ` (${data.allocation_tasks_created} allocation task(s) created)` : ""}${data.approval_tasks_completed ? ` (Task completed)` : ""}`,
+      );
+
+      // If task was completed, navigate back to tasks page
+      if (
+        taskId &&
+        (data.approval_tasks_completed > 0 || data.allocation_tasks_created > 0)
+      ) {
+        setTimeout(() => {
+          router.push("/tasks");
+        }, 1500);
+      } else {
+        fetchDemandApprovals();
+      }
     } catch (error) {
       console.error(`Error ${action.toLowerCase()} demand:`, error);
       toast.error(
@@ -201,6 +271,190 @@ function ApprovalsContent() {
     } finally {
       setProcessing(null);
     }
+  };
+
+  // Bulk operations handlers
+  const handleBulkApprove = async (type: "skill" | "demand") => {
+    const selected = type === "skill" ? selectedSkills : selectedDemands;
+
+    if (selected.size === 0) {
+      toast.error("Please select items to approve");
+      return;
+    }
+
+    setBulkProcessing(true);
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      const approvals = Array.from(selected).map((id) => ({
+        id: parseInt(id),
+        type,
+        action: "approve" as const,
+      }));
+
+      const response = await fetch("/api/approvals/bulk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ approvals }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Bulk approval failed");
+      }
+
+      const successCount = data.results.filter(
+        (r: any) => r.status === "success",
+      ).length;
+      const errorCount = data.results.filter(
+        (r: any) => r.status === "error",
+      ).length;
+
+      if (errorCount > 0) {
+        toast.warning(`Approved ${successCount} items, ${errorCount} failed`);
+      } else {
+        toast.success(`Successfully approved ${successCount} items`);
+      }
+
+      // Clear selection and refresh
+      if (type === "skill") {
+        setSelectedSkills(new Set());
+        fetchSkillRequests();
+      } else {
+        setSelectedDemands(new Set());
+        fetchDemandApprovals();
+      }
+    } catch (error) {
+      console.error("Error in bulk approval:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Bulk approval failed",
+      );
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    const selected = rejectType === "skill" ? selectedSkills : selectedDemands;
+
+    if (selected.size === 0) {
+      toast.error("Please select items to reject");
+      return;
+    }
+
+    if (!rejectReason.trim()) {
+      toast.error("Please provide a rejection reason");
+      return;
+    }
+
+    setBulkProcessing(true);
+    setShowRejectDialog(false);
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      const approvals = Array.from(selected).map((id) => ({
+        id: parseInt(id),
+        type: rejectType,
+        action: "reject" as const,
+        rejection_reason: rejectReason,
+      }));
+
+      const response = await fetch("/api/approvals/bulk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ approvals }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Bulk rejection failed");
+      }
+
+      const successCount = data.results.filter(
+        (r: any) => r.status === "success",
+      ).length;
+      const errorCount = data.results.filter(
+        (r: any) => r.status === "error",
+      ).length;
+
+      if (errorCount > 0) {
+        toast.warning(`Rejected ${successCount} items, ${errorCount} failed`);
+      } else {
+        toast.success(`Successfully rejected ${successCount} items`);
+      }
+
+      // Clear selection and refresh
+      setRejectReason("");
+      if (rejectType === "skill") {
+        setSelectedSkills(new Set());
+        fetchSkillRequests();
+      } else {
+        setSelectedDemands(new Set());
+        fetchDemandApprovals();
+      }
+    } catch (error) {
+      console.error("Error in bulk rejection:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Bulk rejection failed",
+      );
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const toggleSkillSelection = (id: string) => {
+    const newSelection = new Set(selectedSkills);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else {
+      newSelection.add(id);
+    }
+    setSelectedSkills(newSelection);
+  };
+
+  const toggleDemandSelection = (id: string) => {
+    const newSelection = new Set(selectedDemands);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else {
+      newSelection.add(id);
+    }
+    setSelectedDemands(newSelection);
+  };
+
+  const toggleAllSkills = () => {
+    if (selectedSkills.size === skillRequests.length) {
+      setSelectedSkills(new Set());
+    } else {
+      setSelectedSkills(new Set(skillRequests.map((r) => r.id)));
+    }
+  };
+
+  const toggleAllDemands = () => {
+    if (selectedDemands.size === demandApprovals.length) {
+      setSelectedDemands(new Set());
+    } else {
+      setSelectedDemands(new Set(demandApprovals.map((d) => d.id)));
+    }
+  };
+
+  const openRejectDialog = (type: "skill" | "demand") => {
+    const selected = type === "skill" ? selectedSkills : selectedDemands;
+    if (selected.size === 0) {
+      toast.error("Please select items to reject");
+      return;
+    }
+    setRejectType(type);
+    setRejectReason("");
+    setShowRejectDialog(true);
   };
 
   const getProficiencyBadgeVariant = (level: string) => {
@@ -217,6 +471,17 @@ function ApprovalsContent() {
   };
 
   const skillColumns: Column<SkillRequest>[] = [
+    {
+      key: "select",
+      header: "",
+      render: (r) => (
+        <Checkbox
+          checked={selectedSkills.has(r.id)}
+          onCheckedChange={() => toggleSkillSelection(r.id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       key: "employee_code",
       header: "Employee Code",
@@ -249,6 +514,17 @@ function ApprovalsContent() {
   ];
 
   const demandColumns: Column<DemandApproval>[] = [
+    {
+      key: "select",
+      header: "",
+      render: (d) => (
+        <Checkbox
+          checked={selectedDemands.has(d.id)}
+          onCheckedChange={() => toggleDemandSelection(d.id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       key: "project_code",
       header: "Project Code",
@@ -340,12 +616,41 @@ function ApprovalsContent() {
           <TabsContent value="skills" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Pending Skill Requests</CardTitle>
-                <CardDescription>
-                  {isPM
-                    ? "Approve or reject skill requests from your team members"
-                    : "Approve or reject skill requests from all employees"}
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Pending Skill Requests</CardTitle>
+                    <CardDescription>
+                      {isPM
+                        ? "Approve or reject skill requests from your team members"
+                        : "Approve or reject skill requests from all employees"}
+                    </CardDescription>
+                  </div>
+                  {selectedSkills.size > 0 && (
+                    <div className="flex gap-2">
+                      <Badge variant="secondary" className="px-3 py-1">
+                        {selectedSkills.size} selected
+                      </Badge>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleBulkApprove("skill")}
+                        disabled={bulkProcessing}
+                      >
+                        <CheckCheck className="h-4 w-4 mr-2" />
+                        Approve Selected
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => openRejectDialog("skill")}
+                        disabled={bulkProcessing}
+                      >
+                        <XOctagon className="h-4 w-4 mr-2" />
+                        Reject Selected
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {skillRequests.length === 0 ? (
@@ -400,10 +705,39 @@ function ApprovalsContent() {
             <TabsContent value="demands" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Pending Resource Demands</CardTitle>
-                  <CardDescription>
-                    Fulfill or cancel resource demands from project managers
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Pending Resource Demands</CardTitle>
+                      <CardDescription>
+                        Fulfill or cancel resource demands from project managers
+                      </CardDescription>
+                    </div>
+                    {selectedDemands.size > 0 && (
+                      <div className="flex gap-2">
+                        <Badge variant="secondary" className="px-3 py-1">
+                          {selectedDemands.size} selected
+                        </Badge>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleBulkApprove("demand")}
+                          disabled={bulkProcessing}
+                        >
+                          <CheckCheck className="h-4 w-4 mr-2" />
+                          Fulfill Selected
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => openRejectDialog("demand")}
+                          disabled={bulkProcessing}
+                        >
+                          <XOctagon className="h-4 w-4 mr-2" />
+                          Cancel Selected
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {demandApprovals.length === 0 ? (
@@ -456,6 +790,41 @@ function ApprovalsContent() {
             </TabsContent>
           )}
         </Tabs>
+
+        {/* Bulk Rejection Dialog */}
+        <AlertDialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reject Selected Items</AlertDialogTitle>
+              <AlertDialogDescription>
+                Please provide a reason for rejecting the selected{" "}
+                {rejectType === "skill" ? "skill requests" : "demands"}. This
+                will be sent to the requester(s).
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-4">
+              <Label htmlFor="reject-reason">Rejection Reason</Label>
+              <Textarea
+                id="reject-reason"
+                placeholder="Enter reason for rejection..."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="mt-2"
+                rows={4}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkReject}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={!rejectReason.trim()}
+              >
+                Reject Selected
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

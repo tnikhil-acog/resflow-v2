@@ -180,9 +180,7 @@ export async function GET(req: NextRequest) {
           schema.employees,
           eq(schema.phaseReports.submitted_by, schema.employees.id),
         )
-        .where(
-          sql`${schema.phaseReports.phase_id} IN (${phaseIds.join(", ")})`,
-        );
+        .where(inArray(schema.phaseReports.phase_id, phaseIds));
     }
 
     // Combine phases with their reports
