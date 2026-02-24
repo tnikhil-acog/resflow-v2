@@ -40,6 +40,7 @@ INSERT INTO employees (
   employee_type,
   working_location,
   employee_design,
+  department_id,
   experience_years,
   college,
   educational_stream,
@@ -58,15 +59,21 @@ SELECT
   employee_type::employee_type,
   working_location,
   employee_design,
+  d.id,  -- Map department name to department_id
   experience_years,
   college,
   educational_stream,
   COALESCE(NULLIF(ldap_username, ''), employee_code),
-  employee_role::employee_role,
+  -- Automatically assign HR role to employees in HR & Admin department
+  CASE 
+    WHEN s.department = 'HR & Admin' THEN 'HR'::employee_role
+    ELSE employee_role::employee_role
+  END,
   resume_url,
   status::status,
   NULLIF(exited_on, 'NULL')::date
-FROM employees_staging;
+FROM employees_staging s
+LEFT JOIN departments d ON d.name = s.department;
 
 
 -- 4. Resolve reporting manager using name → id

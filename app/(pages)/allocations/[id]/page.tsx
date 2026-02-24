@@ -280,7 +280,16 @@ function AllocationDetailContent() {
     }
 
     const percentage = parseFloat(formData.allocation_percentage);
-    if (remainingCapacity !== null && percentage > remainingCapacity) {
+
+    // Only check remaining capacity if the allocation percentage has changed
+    const allocationPercentageChanged =
+      allocation && percentage !== Number(allocation.allocation_percentage);
+
+    if (
+      allocationPercentageChanged &&
+      remainingCapacity !== null &&
+      percentage > remainingCapacity
+    ) {
       toast.error(
         `Employee capacity exceeded. Available: ${remainingCapacity}%, Requested: ${percentage}%`,
       );

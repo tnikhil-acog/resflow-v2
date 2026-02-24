@@ -14,6 +14,7 @@ import {
   Zap,
   TrendingUp,
   ShieldAlert,
+  Download,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -49,7 +50,7 @@ const navigationItems = [
     name: "Analytics",
     href: "/analytics",
     icon: Home,
-    roles: ["project_manager", "hr_executive"],
+    roles: ["employee", "project_manager", "hr_executive"],
   },
   {
     name: "Projects",
@@ -103,6 +104,12 @@ const navigationItems = [
     name: "Audit",
     href: "/audit",
     icon: FileText,
+    roles: ["hr_executive"],
+  },
+  {
+    name: "Data Export",
+    href: "/exports",
+    icon: Download,
     roles: ["hr_executive"],
   },
   {

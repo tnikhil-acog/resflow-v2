@@ -4,7 +4,7 @@
 // Accept: { allocation_id, new_project_id, transfer_date }
 // Get old allocation: SELECT * FROM project_allocation WHERE id = allocation_id
 // Validate: transfer_date must be between start_date and end_date, else return 400 "transfer_date must be between start_date and end_date"
-// UPDATE old allocation SET end_date = transfer_date WHERE id = allocation_id
+// UPDATE old allocation SET end_date = (transfer_date - 1 day) WHERE id = allocation_id
 // INSERT new allocation with same emp_id, role, allocation_percentage, billability, is_critical_resource but project_id = new_project_id, start_date = transfer_date, assigned_by = current_user_id
 // INSERT audit logs for both UPDATE and INSERT operations with changed_by=current_user_id
 // Return: { old_allocation: { id, end_date }, new_allocation: { id, emp_id, project_id, role, allocation_percentage, start_date, end_date, billability, is_critical_resource, assigned_by } }
@@ -36,6 +36,14 @@ export async function POST(req: NextRequest) {
 
     const transferDateStr = toDateString(transfer_date)!;
 
+    // Calculate the day before transfer date for old allocation end date
+    const transferDate = new Date(transfer_date);
+    const dayBeforeTransfer = new Date(transferDate);
+    dayBeforeTransfer.setDate(dayBeforeTransfer.getDate() - 1);
+    const endDateForOldAllocation = toDateString(
+      dayBeforeTransfer.toISOString(),
+    )!;
+
     const [oldAllocation] = await db
       .select()
       .from(schema.projectAllocation)
@@ -62,7 +70,7 @@ export async function POST(req: NextRequest) {
     const result = await db.transaction(async (tx) => {
       const [updated] = await tx
         .update(schema.projectAllocation)
-        .set({ end_date: transferDateStr, updated_at: new Date() })
+        .set({ end_date: endDateForOldAllocation, updated_at: new Date() })
         .where(eq(schema.projectAllocation.id, allocation_id))
         .returning();
 
@@ -85,7 +93,7 @@ export async function POST(req: NextRequest) {
         entity_id: allocation_id,
         operation: "UPDATE",
         changed_by: user.id,
-        changed_fields: { end_date: transferDateStr },
+        changed_fields: { end_date: endDateForOldAllocation },
       });
 
       await createAuditLog({

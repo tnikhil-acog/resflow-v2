@@ -328,10 +328,37 @@ async function handleListEmployees(
   const isHrExecutive = user.employee_role === "hr_executive";
 
   if (isHrExecutive) {
-    // HR Executive gets all fields
+    // HR Executive gets all fields with department name
     const employees = await db
-      .select()
+      .select({
+        id: schema.employees.id,
+        employee_code: schema.employees.employee_code,
+        ldap_username: schema.employees.ldap_username,
+        full_name: schema.employees.full_name,
+        email: schema.employees.email,
+        gender: schema.employees.gender,
+        employee_type: schema.employees.employee_type,
+        employee_role: schema.employees.employee_role,
+        employee_design: schema.employees.employee_design,
+        working_location: schema.employees.working_location,
+        department_id: schema.employees.department_id,
+        department_name: schema.departments.name,
+        reporting_manager_id: schema.employees.reporting_manager_id,
+        experience_years: schema.employees.experience_years,
+        resume_url: schema.employees.resume_url,
+        college: schema.employees.college,
+        educational_stream: schema.employees.educational_stream,
+        status: schema.employees.status,
+        joined_on: schema.employees.joined_on,
+        exited_on: schema.employees.exited_on,
+        created_at: schema.employees.created_at,
+        updated_at: schema.employees.updated_at,
+      })
       .from(schema.employees)
+      .leftJoin(
+        schema.departments,
+        eq(schema.employees.department_id, schema.departments.id),
+      )
       .where(whereClause)
       .orderBy(schema.employees.full_name)
       .limit(limit)
@@ -339,7 +366,7 @@ async function handleListEmployees(
 
     return successResponse({ employees, total, page, limit });
   } else {
-    // Employee and Project Manager get limited fields
+    // Employee and Project Manager get limited fields with department name
     const employees = await db
       .select({
         id: schema.employees.id,
@@ -348,9 +375,14 @@ async function handleListEmployees(
         email: schema.employees.email,
         employee_design: schema.employees.employee_design,
         employee_role: schema.employees.employee_role,
+        department_name: schema.departments.name,
         status: schema.employees.status,
       })
       .from(schema.employees)
+      .leftJoin(
+        schema.departments,
+        eq(schema.employees.department_id, schema.departments.id),
+      )
       .where(whereClause)
       .orderBy(schema.employees.full_name)
       .limit(limit)

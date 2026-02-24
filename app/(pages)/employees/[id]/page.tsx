@@ -416,6 +416,12 @@ function EmployeeDetailContent() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-sm">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground">
+                      {employee.employee_type || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">
                       {employee.department_name || "N/A"}

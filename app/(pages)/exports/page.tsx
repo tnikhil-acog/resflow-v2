@@ -26,7 +26,14 @@ import { ProjectCombobox } from "@/components/project-combobox";
 import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/use-toast";
 
-type ExportType = "logs" | "reports" | "allocations" | "monthly-billing";
+type ExportType =
+  | "logs"
+  | "reports"
+  | "allocations"
+  | "monthly-billing"
+  | "employees"
+  | "projects"
+  | "audit-logs";
 type ExportFormat = "csv" | "excel";
 
 export default function ExportsPage() {
@@ -50,6 +57,15 @@ export default function ExportsPage() {
   const [allocationStatus, setAllocationStatus] = useState<"current" | "all">(
     "current",
   );
+  const [employeeStatus, setEmployeeStatus] = useState<
+    "active" | "exited" | "all"
+  >("active");
+  const [projectStatus, setProjectStatus] = useState<
+    "active" | "completed" | "all"
+  >("all");
+  const [projectType, setProjectType] = useState<string>("ALL");
+  const [auditAction, setAuditAction] = useState<string>("ALL");
+  const [auditEntityType, setAuditEntityType] = useState<string>("ALL");
   const [isExporting, setIsExporting] = useState(false);
 
   // Get current date for defaults
@@ -112,9 +128,46 @@ export default function ExportsPage() {
           params.append("month", month || currentMonth.toString());
           params.append("year", year || currentYear.toString());
           break;
+
+        case "employees":
+          url = `/api/exports/employees`;
+          params.append("status", employeeStatus);
+          if (projectId && projectId !== "ALL")
+            params.append("department_id", projectId);
+          break;
+
+        case "projects":
+          url = `/api/exports/projects`;
+          params.append("status", projectStatus);
+          if (projectType && projectType !== "ALL")
+            params.append("project_type", projectType);
+          break;
+
+        case "audit-logs":
+          if (!startDate || !endDate) {
+            toast({
+              title: "Missing dates",
+              description: "Please select start and end dates",
+              variant: "destructive",
+            });
+            setIsExporting(false);
+            return;
+          }
+          url = `/api/exports/audit-logs`;
+          params.append("start_date", startDate);
+          params.append("end_date", endDate);
+          if (auditAction && auditAction !== "ALL")
+            params.append("action", auditAction);
+          if (auditEntityType && auditEntityType !== "ALL")
+            params.append("entity_type", auditEntityType);
+          break;
       }
 
-      const response = await fetch(`${url}?${params.toString()}`);
+      const response = await fetch(`${url}?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+        },
+      });
 
       if (!response.ok) {
         const error = await response.json();
@@ -306,6 +359,141 @@ export default function ExportsPage() {
             </div>
           </div>
         );
+
+      case "employees":
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Employee Status</Label>
+              <Select
+                value={employeeStatus}
+                onValueChange={(value: "active" | "exited" | "all") =>
+                  setEmployeeStatus(value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active Employees Only</SelectItem>
+                  <SelectItem value="exited">Exited Employees Only</SelectItem>
+                  <SelectItem value="all">All Employees</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Department (Optional)</Label>
+              <Select value={projectId} onValueChange={setProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Departments</SelectItem>
+                  {/* Department options would be loaded dynamically */}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+
+      case "projects":
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Project Status</Label>
+              <Select
+                value={projectStatus}
+                onValueChange={(value: "active" | "completed" | "all") =>
+                  setProjectStatus(value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active Projects</SelectItem>
+                  <SelectItem value="completed">Completed Projects</SelectItem>
+                  <SelectItem value="all">All Projects</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Project Type (Optional)</Label>
+              <Select value={projectType} onValueChange={setProjectType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Types</SelectItem>
+                  <SelectItem value="client">Client Projects</SelectItem>
+                  <SelectItem value="internal">Internal Projects</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+
+      case "audit-logs":
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start-date">Start Date</Label>
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="end-date">End Date</Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Action Type (Optional)</Label>
+              <Select value={auditAction} onValueChange={setAuditAction}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All actions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Actions</SelectItem>
+                  <SelectItem value="CREATE">Create</SelectItem>
+                  <SelectItem value="UPDATE">Update</SelectItem>
+                  <SelectItem value="DELETE">Delete</SelectItem>
+                  <SelectItem value="LOGIN">Login</SelectItem>
+                  <SelectItem value="LOGOUT">Logout</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Entity Type (Optional)</Label>
+              <Select
+                value={auditEntityType}
+                onValueChange={setAuditEntityType}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All entities" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Entities</SelectItem>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="project">Project</SelectItem>
+                  <SelectItem value="allocation">Allocation</SelectItem>
+                  <SelectItem value="log">Work Log</SelectItem>
+                  <SelectItem value="report">Report</SelectItem>
+                  <SelectItem value="skill">Skill</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
     }
   };
 
@@ -352,6 +540,9 @@ export default function ExportsPage() {
                 <SelectItem value="monthly-billing">
                   Monthly Billing Summary
                 </SelectItem>
+                <SelectItem value="employees">Employees Master Data</SelectItem>
+                <SelectItem value="projects">Projects Master Data</SelectItem>
+                <SelectItem value="audit-logs">Audit Logs</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -406,7 +597,7 @@ export default function ExportsPage() {
       </Card>
 
       {/* Info Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Daily Work Logs</CardTitle>
@@ -441,6 +632,32 @@ export default function ExportsPage() {
           <CardContent className="text-sm text-muted-foreground">
             Export monthly billing hours by project with client and project
             manager details.
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Employees Master Data</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Export complete employee database with personal and employment
+            details.
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Projects Master Data</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Export all projects with client details, PMs, and status
+            information.
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Audit Logs</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Export system audit trail with all user actions and data changes.
           </CardContent>
         </Card>
       </div>

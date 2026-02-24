@@ -104,7 +104,7 @@ function NewSkillContent() {
     try {
       const token = localStorage.getItem("auth_token");
 
-      const response = await fetch("/api/skills/add", {
+      const response = await fetch("/api/skills", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

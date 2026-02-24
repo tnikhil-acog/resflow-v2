@@ -1,5 +1,4 @@
 import {
-  LayoutDashboard,
   CheckSquare,
   Briefcase,
   Users,
@@ -28,16 +27,10 @@ export type NavItem = {
 export const navConfig = {
   main: [
     {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
-      roles: ["employee", "project_manager", "hr_executive"],
-    },
-    {
       title: "Analytics",
       url: "/analytics",
       icon: BarChart3,
-      roles: ["project_manager", "hr_executive"],
+      roles: ["employee", "project_manager", "hr_executive"],
     },
   ],
 

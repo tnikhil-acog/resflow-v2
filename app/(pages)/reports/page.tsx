@@ -16,7 +16,14 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Eye, CalendarIcon, ClockIcon, FileText } from "lucide-react";
+import {
+  Eye,
+  CalendarIcon,
+  ClockIcon,
+  FileText,
+  TrendingUp,
+  Calendar,
+} from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -239,6 +246,54 @@ function ReportsContent() {
           <Button>Submit New Report</Button>
         </Link>
       </div>
+
+      {/* Advanced Reports - HR/PM Only */}
+      {(isHR || isPM) && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            Advanced Reports
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Link href="/reports/monthly">
+              <Card className="border-none shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4">
+                    <div className="rounded-lg bg-primary/10 p-3">
+                      <Calendar className="h-8 w-8 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg">Monthly Reports</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Consolidated monthly billing and activity reports
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/reports/productivity">
+              <Card className="border-none shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4">
+                    <div className="rounded-lg bg-emerald-500/10 p-3">
+                      <TrendingUp className="h-8 w-8 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg">
+                        Team Productivity
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Weekly team performance and hours tracking
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

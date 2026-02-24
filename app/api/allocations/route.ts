@@ -392,9 +392,7 @@ export async function GET(req: NextRequest) {
 
       // Exclude the allocation being edited (if provided)
       if (exclude_allocation_id) {
-        conditions.push(
-          sql`${schema.projectAllocation.id} != ${exclude_allocation_id}`,
-        );
+        conditions.push(ne(schema.projectAllocation.id, exclude_allocation_id));
       }
 
       const result = await db
@@ -577,6 +575,14 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+    console.log("[ALLOCATION UPDATE] Current allocation being edited:", {
+      id: currentAllocation.id,
+      emp_id: currentAllocation.emp_id,
+      percentage: currentAllocation.allocation_percentage,
+      start_date: currentAllocation.start_date,
+      end_date: currentAllocation.end_date,
+    });
+
     // ---------------- VALIDATE ALLOCATION % CHANGE ----------------
 
     if (
@@ -590,10 +596,51 @@ export async function PUT(req: NextRequest) {
 
       const startDateStr = currentAllocation.start_date;
 
-      // Overlap rule:
-      // existing.start <= new.end
-      // AND
-      // COALESCE(existing.end, +infinity) >= new.start
+      // Overlap rule for finding conflicting allocations:
+      // An allocation overlaps with the period [startDateStr, newEndDateStr] if:
+      // existing.start_date <= (newEndDateStr OR '9999-12-31')
+      // AND COALESCE(existing.end_date, '9999-12-31') >= startDateStr
+
+      // Handle null end date - treat as ongoing (far future date)
+      const effectiveEndDate = newEndDateStr || "9999-12-31";
+
+      console.log("[ALLOCATION UPDATE] Checking overlap for:", {
+        emp_id: currentAllocation.emp_id,
+        exclude_id: id,
+        start_date: startDateStr,
+        end_date: effectiveEndDate,
+        current_percentage: currentAllocation.allocation_percentage,
+      });
+
+      // Debug: Get all matching allocations to see what's being included
+      // Overlap rule: Two allocations overlap if they share any common day
+      // existing.start_date < edited.end_date (or infinity)
+      // AND existing.end_date (or infinity) > edited.start_date
+      // Using strict inequalities so allocations on boundary dates don't overlap
+      // (e.g., one ending on Feb 15 and another starting on Feb 15 = no overlap)
+      const debugAllocations = await db
+        .select({
+          id: schema.projectAllocation.id,
+          percentage: schema.projectAllocation.allocation_percentage,
+          start_date: schema.projectAllocation.start_date,
+          end_date: schema.projectAllocation.end_date,
+        })
+        .from(schema.projectAllocation)
+        .where(
+          and(
+            eq(schema.projectAllocation.emp_id, currentAllocation.emp_id),
+            ne(schema.projectAllocation.id, id),
+            // existing.start < edited.end
+            sql`${schema.projectAllocation.start_date} < ${effectiveEndDate}`,
+            // existing.end > edited.start (use COALESCE for null end dates)
+            sql`COALESCE(${schema.projectAllocation.end_date}, '9999-12-31') > ${startDateStr}`,
+          ),
+        );
+
+      console.log(
+        "[ALLOCATION UPDATE] Found overlapping allocations:",
+        debugAllocations,
+      );
 
       const overlapping = await db
         .select({
@@ -603,23 +650,23 @@ export async function PUT(req: NextRequest) {
         .where(
           and(
             eq(schema.projectAllocation.emp_id, currentAllocation.emp_id),
-            ne(schema.projectAllocation.id, id),
+            ne(schema.projectAllocation.id, id), // Exclude the allocation being edited
 
-            // existing.start <= new.end (or new.start if end_date null)
-            lte(
-              schema.projectAllocation.start_date,
-              newEndDateStr ?? startDateStr,
-            ),
+            // existing.start < edited.end
+            sql`${schema.projectAllocation.start_date} < ${effectiveEndDate}`,
 
-            // COALESCE(existing.end, infinity) >= new.start
-            gte(
-              sql`COALESCE(${schema.projectAllocation.end_date}, '9999-12-31')`,
-              startDateStr,
-            ),
+            // existing.end > edited.start (use COALESCE for null end dates)
+            sql`COALESCE(${schema.projectAllocation.end_date}, '9999-12-31') > ${startDateStr}`,
           ),
         );
 
       const otherAllocations = Number(overlapping[0]?.total || 0);
+
+      console.log("[ALLOCATION UPDATE] Overlap result:", {
+        otherAllocations,
+        requestedPercentage: allocation_percentage,
+        total: otherAllocations + Number(allocation_percentage),
+      });
       const totalAllocation = otherAllocations + Number(allocation_percentage);
 
       if (totalAllocation > 100) {

@@ -41,6 +41,7 @@ interface Employee {
   email: string;
   employee_role: string;
   employee_design: string;
+  department_name?: string;
   status: string;
   ldap_username?: string;
   employee_type?: string;
@@ -358,6 +359,13 @@ function EmployeesListContent() {
       {
         key: "employee_design",
         header: "Designation",
+      },
+      {
+        key: "department_name",
+        header: "Department",
+        render: (emp: Employee) => (
+          <span className="text-sm">{emp.department_name || "N/A"}</span>
+        ),
       },
       {
         key: "status",

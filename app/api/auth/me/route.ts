@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, mapDbRoleToApp, type DbRole } from "@/lib/auth";
 import { ErrorResponses, successResponse } from "@/lib/api-helpers";
 
 // GET /api/auth/me
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       email: employee.email,
       gender: employee.gender,
       employee_type: employee.employee_type,
-      employee_role: employee.employee_role,
+      employee_role: mapDbRoleToApp(employee.employee_role as DbRole),
       employee_design: employee.employee_design,
       working_location: employee.working_location,
       department_id: employee.department_id,

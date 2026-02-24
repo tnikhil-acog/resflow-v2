@@ -29,6 +29,9 @@ import {
   Building2,
   PieChart,
   Filter,
+  BarChart3,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import {
   Select,
@@ -40,6 +43,17 @@ import {
 import { Label } from "@/components/ui/label";
 import { EmployeeCombobox } from "@/components/employee-combobox";
 import { ProjectCombobox } from "@/components/project-combobox";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
 interface AnalyticsData {
   billableHours?: {
@@ -90,19 +104,72 @@ export default function AnalyticsPage() {
   const [selectedProject, setSelectedProject] = useState<string>("ALL");
   const [selectedEmpType, setSelectedEmpType] = useState<string>("ALL");
 
+  // Allocation breakdown employee selector (for HR/PM)
+  const [allocationEmployeeId, setAllocationEmployeeId] = useState<string>("");
+
   // Filter options
   const [departments, setDepartments] = useState<any[]>([]);
 
-  // Check access - only HR and PM allowed
+  // New chart data
+  const [departmentCountData, setDepartmentCountData] = useState<
+    Array<{ department: string; count: number }>
+  >([]);
+  const [projectEmployeeCountData, setProjectEmployeeCountData] = useState<
+    Array<{
+      project: string;
+      project_code: string;
+      project_name: string;
+      count: number;
+    }>
+  >([]);
+  const [employeeAllocationByType, setEmployeeAllocationByType] = useState<
+    Array<{
+      type: string;
+      employeeCount: number;
+      totalAllocation: number;
+      projects: Array<{
+        project_code: string;
+        project_name: string;
+        employeeCount: number;
+        totalAllocation: number;
+        employees: Array<{
+          employee_id: string;
+          employee_name: string;
+          allocation_percentage: number;
+        }>;
+      }>;
+    }>
+  >([]);
+  const [allocationByTypeData, setAllocationByTypeData] = useState<
+    Array<{ project_type: string; allocation: number; percentage: string }>
+  >([]);
+
+  // Economic utilization data
+  const [economicUtilization, setEconomicUtilization] = useState<{
+    billableEmployeeCount: number;
+    totalEmployeeCount: number;
+    economicUtilization: number;
+  } | null>(null);
+
+  // Capacity utilization data
+  const [capacityUtilization, setCapacityUtilization] = useState<{
+    utilizedEmployeeCount: number;
+    totalEmployeeCount: number;
+    capacityUtilization: number;
+  } | null>(null);
+
+  // Track expanded project types
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
+    new Set(),
+  );
+
+  // Check access - all authenticated users allowed
   useEffect(() => {
     if (authLoading) return;
 
-    if (
-      !user ||
-      (user.employee_role !== "hr_executive" &&
-        user.employee_role !== "project_manager")
-    ) {
-      router.push("/tasks");
+    if (!user) {
+      router.push("/login");
       return;
     }
   }, [user, authLoading, router]);
@@ -204,12 +271,25 @@ export default function AnalyticsPage() {
           );
         }
 
-        // Fetch employee billability for all users
+        // Fetch employee billability based on role
         if (user?.id) {
+          // Determine which employee's data to fetch
+          let empIdToFetch = user.id;
+
+          // For HR/PM, if an allocation employee is selected, fetch their data
+          if (
+            (user.employee_role === "hr_executive" ||
+              user.employee_role === "project_manager") &&
+            allocationEmployeeId &&
+            allocationEmployeeId !== "ALL"
+          ) {
+            empIdToFetch = allocationEmployeeId;
+          }
+
           promises.push(
-            fetch(`/api/employees/${user.id}/billability`, { headers }).then(
-              (r) => (r.ok ? r.json() : null),
-            ),
+            fetch(`/api/employees/${empIdToFetch}/billability`, {
+              headers,
+            }).then((r) => (r.ok ? r.json() : null)),
           );
         }
 
@@ -251,7 +331,72 @@ export default function AnalyticsPage() {
     selectedEmployee,
     selectedProject,
     selectedEmpType,
+    allocationEmployeeId,
   ]);
+
+  // Fetch chart data separately (doesn't depend on filters)
+  useEffect(() => {
+    if (authLoading || !user) return;
+
+    const fetchChartData = async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token) return;
+
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [
+          deptCountRes,
+          projectEmpCountRes,
+          empAllocByTypeRes,
+          allocByTypeRes,
+          economicUtilRes,
+          capacityUtilRes,
+        ] = await Promise.all([
+          fetch("/api/analytics/department-count", { headers }),
+          fetch("/api/analytics/project-employee-count", { headers }),
+          fetch("/api/analytics/employee-allocation-by-type", { headers }),
+          fetch("/api/analytics/allocation-by-project-type", { headers }),
+          fetch("/api/analytics/economic-utilization", { headers }),
+          fetch("/api/analytics/capacity-utilization", { headers }),
+        ]);
+
+        if (deptCountRes.ok) {
+          const data = await deptCountRes.json();
+          setDepartmentCountData(data.data || []);
+        }
+
+        if (projectEmpCountRes.ok) {
+          const data = await projectEmpCountRes.json();
+          setProjectEmployeeCountData(data.data || []);
+        }
+
+        if (empAllocByTypeRes.ok) {
+          const data = await empAllocByTypeRes.json();
+          setEmployeeAllocationByType(data.data || []);
+        }
+
+        if (allocByTypeRes.ok) {
+          const data = await allocByTypeRes.json();
+          setAllocationByTypeData(data.data || []);
+        }
+
+        if (economicUtilRes.ok) {
+          const data = await economicUtilRes.json();
+          setEconomicUtilization(data);
+        }
+
+        if (capacityUtilRes.ok) {
+          const data = await capacityUtilRes.json();
+          setCapacityUtilization(data);
+        }
+      } catch (error) {
+        console.error("Error fetching chart data:", error);
+      }
+    };
+
+    fetchChartData();
+  }, [user, authLoading]);
 
   if (authLoading || loading) {
     return (
@@ -316,81 +461,83 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              Filters
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* Department Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="department-filter">Department</Label>
-                <Select
-                  value={selectedDepartment}
-                  onValueChange={setSelectedDepartment}
-                >
-                  <SelectTrigger id="department-filter">
-                    <SelectValue placeholder="All Departments" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Departments</SelectItem>
-                    {departments.map((dept: any) => (
-                      <SelectItem key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        {/* Filters - Only show for HR and PM */}
+        {(userRole === "hr_executive" || userRole === "project_manager") && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                Filters
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Department Filter */}
+                <div className="space-y-2">
+                  <Label htmlFor="department-filter">Department</Label>
+                  <Select
+                    value={selectedDepartment}
+                    onValueChange={setSelectedDepartment}
+                  >
+                    <SelectTrigger id="department-filter">
+                      <SelectValue placeholder="All Departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All Departments</SelectItem>
+                      {departments.map((dept: any) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              {/* Employee Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="employee-filter">Employee</Label>
-                <EmployeeCombobox
-                  value={selectedEmployee}
-                  onValueChange={setSelectedEmployee}
-                  placeholder="Select employee..."
-                  showAllOption={true}
-                  filterByPMProjects={true}
-                />
-              </div>
+                {/* Employee Filter */}
+                <div className="space-y-2">
+                  <Label htmlFor="employee-filter">Employee</Label>
+                  <EmployeeCombobox
+                    value={selectedEmployee}
+                    onValueChange={setSelectedEmployee}
+                    placeholder="Select employee..."
+                    showAllOption={true}
+                    filterByPMProjects={true}
+                  />
+                </div>
 
-              {/* Project Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="project-filter">Project</Label>
-                <ProjectCombobox
-                  value={selectedProject}
-                  onValueChange={setSelectedProject}
-                  placeholder="Select project..."
-                  showAllOption={true}
-                />
-              </div>
+                {/* Project Filter */}
+                <div className="space-y-2">
+                  <Label htmlFor="project-filter">Project</Label>
+                  <ProjectCombobox
+                    value={selectedProject}
+                    onValueChange={setSelectedProject}
+                    placeholder="Select project..."
+                    showAllOption={true}
+                  />
+                </div>
 
-              {/* Employee Type Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="emptype-filter">Employee Type</Label>
-                <Select
-                  value={selectedEmpType}
-                  onValueChange={setSelectedEmpType}
-                >
-                  <SelectTrigger id="emptype-filter">
-                    <SelectValue placeholder="All Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Types</SelectItem>
-                    <SelectItem value="FTE">FTE</SelectItem>
-                    <SelectItem value="INTERN">INTERN</SelectItem>
-                    <SelectItem value="Trainee">Trainee</SelectItem>
-                  </SelectContent>
-                </Select>
+                {/* Employee Type Filter */}
+                <div className="space-y-2">
+                  <Label htmlFor="emptype-filter">Employee Type</Label>
+                  <Select
+                    value={selectedEmpType}
+                    onValueChange={setSelectedEmpType}
+                  >
+                    <SelectTrigger id="emptype-filter">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All Types</SelectItem>
+                      <SelectItem value="FTE">FTE</SelectItem>
+                      <SelectItem value="INTERN">INTERN</SelectItem>
+                      <SelectItem value="Trainee">Trainee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {error && (
           <Alert variant="destructive" className="mb-6">
@@ -405,96 +552,126 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
               <DollarSign className="h-6 w-6 text-primary" />
-              Billable Hours Tracking
+              {userRole === "employee"
+                ? "Hours Tracking"
+                : "Billable Hours Tracking"}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Billable Hours */}
-              <Card className="border-none shadow-lg">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Billable Hours
-                    </CardTitle>
-                    <div className="rounded-lg bg-green-500/10 p-2">
-                      <TrendingUp className="h-4 w-4 text-green-500" />
+            <div
+              className={`grid grid-cols-1 ${userRole === "employee" ? "md:grid-cols-1 lg:grid-cols-1" : "md:grid-cols-2 lg:grid-cols-4"} gap-6`}
+            >
+              {/* Show only Total Hours for employees */}
+              {userRole === "employee" ? (
+                <Card className="border-none shadow-lg">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">
+                        Total Hours This Week
+                      </CardTitle>
+                      <div className="rounded-lg bg-blue-500/10 p-2">
+                        <Clock className="h-4 w-4 text-blue-500" />
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-green-600">
-                    {billableData?.billable_hours?.toFixed(1) || "0.0"}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This week
-                  </p>
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {billableData?.total_hours?.toFixed(1) || "0.0"}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Hours logged this week
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  {/* Billable Hours - HR/PM only */}
+                  <Card className="border-none shadow-lg">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                          Billable Hours
+                        </CardTitle>
+                        <div className="rounded-lg bg-green-500/10 p-2">
+                          <TrendingUp className="h-4 w-4 text-green-500" />
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-600">
+                        {billableData?.billable_hours?.toFixed(1) || "0.0"}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This week
+                      </p>
+                    </CardContent>
+                  </Card>
 
-              {/* Non-Billable Hours */}
-              <Card className="border-none shadow-lg">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Non-Billable Hours
-                    </CardTitle>
-                    <div className="rounded-lg bg-orange-500/10 p-2">
-                      <Clock className="h-4 w-4 text-orange-500" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-orange-600">
-                    {billableData?.non_billable_hours?.toFixed(1) || "0.0"}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This week
-                  </p>
-                </CardContent>
-              </Card>
+                  {/* Non-Billable Hours - HR/PM only */}
+                  <Card className="border-none shadow-lg">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                          Non-Billable Hours
+                        </CardTitle>
+                        <div className="rounded-lg bg-orange-500/10 p-2">
+                          <Clock className="h-4 w-4 text-orange-500" />
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-orange-600">
+                        {billableData?.non_billable_hours?.toFixed(1) || "0.0"}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This week
+                      </p>
+                    </CardContent>
+                  </Card>
 
-              {/* Total Hours */}
-              <Card className="border-none shadow-lg">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Hours
-                    </CardTitle>
-                    <div className="rounded-lg bg-blue-500/10 p-2">
-                      <Clock className="h-4 w-4 text-blue-500" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">
-                    {billableData?.total_hours?.toFixed(1) || "0.0"}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This week
-                  </p>
-                </CardContent>
-              </Card>
+                  {/* Total Hours - HR/PM only */}
+                  <Card className="border-none shadow-lg">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                          Total Hours
+                        </CardTitle>
+                        <div className="rounded-lg bg-blue-500/10 p-2">
+                          <Clock className="h-4 w-4 text-blue-500" />
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">
+                        {billableData?.total_hours?.toFixed(1) || "0.0"}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This week
+                      </p>
+                    </CardContent>
+                  </Card>
 
-              {/* Billability Percentage */}
-              <Card className="border-none shadow-lg">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Billability Rate
-                    </CardTitle>
-                    <div className="rounded-lg bg-purple-500/10 p-2">
-                      <PieChart className="h-4 w-4 text-purple-500" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-purple-600">
-                    {calculateBillablePercentage()}%
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Of total hours
-                  </p>
-                </CardContent>
-              </Card>
+                  {/* Billability Percentage - HR/PM only */}
+                  <Card className="border-none shadow-lg">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                          Billability Rate
+                        </CardTitle>
+                        <div className="rounded-lg bg-purple-500/10 p-2">
+                          <PieChart className="h-4 w-4 text-purple-500" />
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-600">
+                        {calculateBillablePercentage()}%
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Of total hours
+                      </p>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </div>
           </div>
 
@@ -576,10 +753,29 @@ export default function AnalyticsPage() {
           {/* Employee Billability Breakdown */}
           {billabilityData && (
             <div>
-              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <Users className="h-6 w-6 text-primary" />
-                Your Allocation Breakdown
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <Users className="h-6 w-6 text-primary" />
+                  {userRole === "hr_executive"
+                    ? "Employee Allocation Breakdown"
+                    : userRole === "project_manager"
+                      ? "Team Allocation Breakdown"
+                      : "Your Allocation Breakdown"}
+                </h2>
+                {/* Employee Selector for HR/PM */}
+                {(userRole === "hr_executive" ||
+                  userRole === "project_manager") && (
+                  <div className="w-64">
+                    <EmployeeCombobox
+                      value={allocationEmployeeId || user?.id || ""}
+                      onValueChange={setAllocationEmployeeId}
+                      placeholder="Select employee..."
+                      showAllOption={false}
+                      filterByPMProjects={userRole === "project_manager"}
+                    />
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Billability Summary Cards */}
                 <Card className="border-none shadow-lg">
@@ -888,6 +1084,443 @@ export default function AnalyticsPage() {
               )}
             </div>
           </div>
+
+          {/* Analytics Components - HR/PM Only 
+              1. Employee Count by Department (Bar Chart)
+              2. Employee Count by Project (Bar Chart)
+              3. Employee Allocation by Project Type (Expandable List with %)
+              4. Economic Utilization (% of billable employees)
+              5. Capacity Utilization (% of utilized allocation)
+          */}
+          {(userRole === "hr_executive" || userRole === "project_manager") && (
+            <>
+              {/* Department Employee Count Chart */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <Building2 className="h-6 w-6 text-primary" />
+                  Employee Count by Department
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={departmentCountData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="department"
+                          angle={-45}
+                          textAnchor="end"
+                          height={100}
+                          interval={0}
+                          style={{ fontSize: "12px" }}
+                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar
+                          dataKey="count"
+                          fill="#6366f1"
+                          name="Employee Count"
+                        >
+                          {departmentCountData.map((entry, index) => {
+                            const colors = [
+                              "#6366f1",
+                              "#8b5cf6",
+                              "#ec4899",
+                              "#f43f5e",
+                              "#f97316",
+                              "#eab308",
+                              "#84cc16",
+                              "#10b981",
+                              "#14b8a6",
+                              "#06b6d4",
+                              "#3b82f6",
+                              "#6366f1",
+                            ];
+                            return (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={colors[index % colors.length]}
+                              />
+                            );
+                          })}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Project-wise Employee Count Chart */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <FolderOpen className="h-6 w-6 text-primary" />
+                  Employee Count by Project
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={projectEmployeeCountData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="project_code"
+                          angle={-45}
+                          textAnchor="end"
+                          height={100}
+                          interval={0}
+                          style={{ fontSize: "12px" }}
+                        />
+                        <YAxis />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              return (
+                                <div className="bg-white p-3 border border-gray-200 rounded shadow-lg">
+                                  <p className="font-semibold">
+                                    {payload[0].payload.project_code}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    {payload[0].payload.project_name}
+                                  </p>
+                                  <p className="text-sm font-semibold text-primary">
+                                    Employees: {payload[0].value}
+                                  </p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Legend />
+                        <Bar
+                          dataKey="count"
+                          fill="#10b981"
+                          name="Employee Count"
+                        >
+                          {projectEmployeeCountData.map((entry, index) => {
+                            const colors = [
+                              "#10b981",
+                              "#14b8a6",
+                              "#06b6d4",
+                              "#3b82f6",
+                              "#6366f1",
+                              "#8b5cf6",
+                              "#a855f7",
+                              "#d946ef",
+                              "#ec4899",
+                              "#f43f5e",
+                              "#f97316",
+                              "#eab308",
+                            ];
+                            return (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={colors[index % colors.length]}
+                              />
+                            );
+                          })}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Employee Allocation by Project Type - Expandable List */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <Users className="h-6 w-6 text-primary" />
+                  Employee Allocation by Project Type
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    <div className="space-y-2">
+                      {/* Table Header */}
+                      <div className="grid grid-cols-4 gap-4 px-4 py-3 bg-muted/50 rounded-lg font-semibold text-sm">
+                        <div className="col-span-2">
+                          Type / Project / Employee
+                        </div>
+                        <div className="text-right">Description</div>
+                        <div className="text-right">% Allocation</div>
+                      </div>
+
+                      {/* Expandable Rows */}
+                      {employeeAllocationByType.map((typeData) => (
+                        <div
+                          key={typeData.type}
+                          className="border-b last:border-b-0"
+                        >
+                          {/* Type Row */}
+                          <div
+                            className="grid grid-cols-4 gap-4 px-4 py-3 hover:bg-muted/30 cursor-pointer transition-colors"
+                            onClick={() => {
+                              const newExpanded = new Set(expandedTypes);
+                              if (newExpanded.has(typeData.type)) {
+                                newExpanded.delete(typeData.type);
+                              } else {
+                                newExpanded.add(typeData.type);
+                              }
+                              setExpandedTypes(newExpanded);
+                            }}
+                          >
+                            <div className="col-span-2 flex items-center gap-2 font-semibold">
+                              {expandedTypes.has(typeData.type) ? (
+                                <ChevronDown className="h-4 w-4 text-primary" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              <span className="text-blue-600">
+                                {typeData.type} Total
+                              </span>
+                            </div>
+                            <div className="text-right text-sm text-muted-foreground">
+                              {typeData.employeeCount} employees
+                            </div>
+                            <div className="text-right font-semibold">
+                              {typeData.totalAllocation.toFixed(2)}%
+                            </div>
+                          </div>
+
+                          {/* Expanded Projects */}
+                          {expandedTypes.has(typeData.type) && (
+                            <div className="bg-muted/10">
+                              {typeData.projects.map((project) => {
+                                const projectKey = `${typeData.type}-${project.project_code}`;
+                                return (
+                                  <div key={project.project_code}>
+                                    {/* Project Row */}
+                                    <div
+                                      className="grid grid-cols-4 gap-4 px-4 py-2 pl-12 hover:bg-muted/20 cursor-pointer transition-colors text-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const newExpanded = new Set(
+                                          expandedProjects,
+                                        );
+                                        if (newExpanded.has(projectKey)) {
+                                          newExpanded.delete(projectKey);
+                                        } else {
+                                          newExpanded.add(projectKey);
+                                        }
+                                        setExpandedProjects(newExpanded);
+                                      }}
+                                    >
+                                      <div className="col-span-2 flex items-center gap-2 text-gray-700 font-medium">
+                                        {expandedProjects.has(projectKey) ? (
+                                          <ChevronDown className="h-3 w-3 text-primary" />
+                                        ) : (
+                                          <ChevronRight className="h-3 w-3" />
+                                        )}
+                                        {project.project_code}
+                                      </div>
+                                      <div className="text-right text-gray-700">
+                                        {project.project_name}
+                                      </div>
+                                      <div className="text-right font-medium">
+                                        {project.totalAllocation.toFixed(2)}%
+                                      </div>
+                                    </div>
+
+                                    {/* Expanded Employees */}
+                                    {expandedProjects.has(projectKey) && (
+                                      <div className="bg-muted/20">
+                                        {project.employees.map((employee) => (
+                                          <div
+                                            key={employee.employee_id}
+                                            className="grid grid-cols-4 gap-4 px-4 py-2 pl-24 hover:bg-muted/30 transition-colors text-sm"
+                                          >
+                                            <div className="col-span-2 text-gray-600">
+                                              {employee.employee_name}
+                                            </div>
+                                            <div className="text-right text-gray-600">
+                                              Employee
+                                            </div>
+                                            <div className="text-right text-gray-900">
+                                              {employee.allocation_percentage.toFixed(
+                                                2,
+                                              )}
+                                              %
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Empty State */}
+                      {employeeAllocationByType.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                          No allocation data available
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Economic Utilization */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <TrendingUp className="h-6 w-6 text-primary" />
+                  Economic Utilization
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    {economicUtilization ? (
+                      <div className="space-y-4">
+                        {/* Metric Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <Card className="border-primary/20">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Billable Employees
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-3xl font-bold text-green-600">
+                                {economicUtilization.billableEmployeeCount}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                On billable projects
+                              </p>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-primary/20">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Total Employees
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-3xl font-bold">
+                                {economicUtilization.totalEmployeeCount}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Active employees
+                              </p>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-primary/20 bg-primary/5">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Economic Utilization
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-3xl font-bold text-primary">
+                                {economicUtilization.economicUtilization.toFixed(
+                                  2,
+                                )}
+                                %
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Overall utilization rate
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </div>
+
+                        {/* Explanation */}
+                        <div className="text-sm text-muted-foreground italic mt-4 p-4 bg-muted/50 rounded-lg">
+                          💡 Economic utilization measures the percentage of
+                          employees working on billable projects
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        Loading economic utilization data...
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Capacity Utilization */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <TrendingUp className="h-6 w-6 text-primary" />
+                  Capacity Utilization
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    {capacityUtilization ? (
+                      <div className="space-y-4">
+                        {/* Metric Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <Card className="border-primary/20">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Utilized Employees
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-3xl font-bold text-blue-600">
+                                {capacityUtilization.utilizedEmployeeCount}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                With UTILIZED status
+                              </p>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-primary/20">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Total Employees
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-3xl font-bold">
+                                {capacityUtilization.totalEmployeeCount}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Active employees
+                              </p>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-primary/20 bg-primary/5">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Capacity Utilization
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-3xl font-bold text-primary">
+                                {capacityUtilization.capacityUtilization.toFixed(
+                                  2,
+                                )}
+                                %
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Overall capacity rate
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </div>
+
+                        {/* Explanation */}
+                        <div className="text-sm text-muted-foreground italic mt-4 p-4 bg-muted/50 rounded-lg">
+                          💡 Capacity utilization measures the percentage of
+                          employees with UTILIZED allocation status
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        Loading capacity utilization data...
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
 
           {/* Quick Actions */}
           <div>
