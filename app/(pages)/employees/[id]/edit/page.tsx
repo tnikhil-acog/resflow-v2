@@ -16,11 +16,7 @@ import { EmployeeFormFields } from "@/components/forms/employee-form-fields";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { LoadingPage, LoadingSpinner } from "@/components/loading-spinner";
-
-interface Department {
-  id: string;
-  name: string;
-}
+import type { Department } from "@/lib/types";
 
 interface Manager {
   id: string;
@@ -59,7 +55,7 @@ function EditEmployeeContent() {
   const params = useParams();
   const employeeId = params.id as string;
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,13 +96,11 @@ function EditEmployeeContent() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Fetch employee details
-      const empResponse = await fetch(
+      const empResponse = await authenticatedFetch(
         `/api/employees?action=get&id=${employeeId}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -139,8 +133,7 @@ function EditEmployeeContent() {
       });
 
       // Fetch departments
-      const deptResponse = await fetch("/api/departments", {
-        headers: { Authorization: `Bearer ${token}` },
+      const deptResponse = await authenticatedFetch("/api/departments", {
       });
 
       if (deptResponse.ok) {
@@ -149,8 +142,7 @@ function EditEmployeeContent() {
       }
 
       // Fetch managers
-      const managersResponse = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
+      const managersResponse = await authenticatedFetch("/api/employees", {
       });
 
       if (managersResponse.ok) {
@@ -227,7 +219,6 @@ function EditEmployeeContent() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
 
       const payload: any = {
         id: employeeId,
@@ -252,11 +243,10 @@ function EditEmployeeContent() {
       if (formData.educational_stream)
         payload.educational_stream = formData.educational_stream.trim();
 
-      const response = await fetch("/api/employees", {
+      const response = await authenticatedFetch("/api/employees", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });

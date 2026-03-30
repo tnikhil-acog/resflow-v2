@@ -1,40 +1,3 @@
-// POST /api/allocations/create
-// Allowed Roles: hr_executive
-// Check JWT role = 'hr_executive', else return 403
-// Accept: { emp_id, project_id, role, allocation_percentage, start_date, end_date, billability }
-// Validate: end_date must be >= start_date, else return 400 "end_date must be >= start_date"
-// Calculate total allocation: SELECT SUM(allocation_percentage) FROM project_allocation WHERE emp_id = ? AND ((start_date <= ? AND end_date >= ?) OR (start_date <= ? AND end_date >= ?))
-// If total + allocation_percentage > 100, return 400 "Employee allocation exceeds 100%. Current: X%, Requested: Y%, Total: Z%"
-// INSERT into project_allocation table with assigned_by = current_user_id
-// INSERT audit log with operation='INSERT', changed_by=current_user_id
-// Return: { id, emp_id, project_id, role, allocation_percentage, start_date, end_date, billability, assigned_by }
-
-// GET /api/allocations/list
-// Allowed Roles: employee, project_manager, hr_executive
-// Query params: emp_id, project_id, active_only, page, limit
-// Data Filtering:
-//   - employee: Returns WHERE emp_id = current_user_id
-//   - project_manager: Returns WHERE project_id IN (SELECT id FROM projects WHERE project_manager_id = current_user_id)
-//   - hr_executive: Returns all allocations
-// active_only=true filters: WHERE start_date <= CURRENT_DATE AND (end_date IS NULL OR end_date >= CURRENT_DATE)
-// SELECT * FROM project_allocation WHERE filters applied
-// JOIN employees table to get employee_code, employee_name (full_name)
-// JOIN projects table to get project_code, project_name
-// Apply pagination using LIMIT and OFFSET
-// Return: { allocations: [{ id, emp_id, employee_code, employee_name, project_id, project_code, project_name, role, allocation_percentage, start_date, end_date, billability, assigned_by }], total, page, limit }
-// Error 403 if access denied
-
-// PUT /api/allocations/update
-// Allowed Roles: hr_executive
-// Check JWT role = 'hr_executive', else return 403
-// Accept: { id, allocation_percentage, end_date, billability}
-// Get current allocation: SELECT emp_id, allocation_percentage, start_date, end_date FROM project_allocation WHERE id = ?
-// Calculate total excluding this allocation: SELECT SUM(allocation_percentage) FROM project_allocation WHERE emp_id = ? AND id != ? AND ((start_date <= ? AND end_date >= ?) OR (start_date <= ? AND end_date >= ?))
-// If total + new_allocation_percentage > 100, return 400 "Updated allocation exceeds 100%. Current other: X%, Requested: Y%, Total: Z%"
-// UPDATE project_allocation SET fields WHERE id = ?
-// INSERT audit log with operation='UPDATE', changed_by=current_user_id
-// Return: { id, allocation_percentage, end_date, billability}
-
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser, checkRole } from "@/lib/auth";
@@ -132,6 +95,7 @@ export async function POST(req: NextRequest) {
       start_date,
       end_date,
       billability,
+      demand_id, // Optional: links this allocation to a demand task
     } = body;
 
     // Support both single and bulk allocation
@@ -258,48 +222,37 @@ export async function POST(req: NextRequest) {
     }
 
     // ---------------- COMPLETE ALLOCATION TASKS ----------------
-    // Check if there are pending allocation tasks for this project
-    // These would have been created when a demand was approved
+    // If a demand_id was supplied, complete the matching DEMAND task directly.
+    // Otherwise fall back to a project-name description match.
     if (results.length > 0) {
-      const allocationTasks = await db
-        .select()
-        .from(schema.tasks)
-        .where(
-          and(
-            eq(schema.tasks.entity_type, "DEMAND"),
-            eq(schema.tasks.status, "DUE"),
-            eq(schema.tasks.owner_id, user.id),
-          ),
-        );
-
-      // Filter tasks that mention this project (basic check in description)
-      const projectDetails = await db
-        .select({
-          project_name: schema.projects.project_name,
-          project_code: schema.projects.project_code,
-        })
-        .from(schema.projects)
-        .where(eq(schema.projects.id, project_id));
-
       let completedTasksCount = 0;
 
-      if (allocationTasks.length > 0 && projectDetails.length > 0) {
-        const projectName = projectDetails[0].project_name;
-        const projectCode = projectDetails[0].project_code;
+      if (demand_id) {
+        // Exact match: complete ALL pending DEMAND tasks for this demand (across all HR users)
+        const demandTasks = await db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.entity_type, "DEMAND"),
+              eq(schema.tasks.entity_id, demand_id),
+              eq(schema.tasks.status, "DUE"),
+            ),
+          );
 
-        // Complete tasks that are related to allocation and mention this project
-        for (const task of allocationTasks) {
-          if (
-            task.description &&
-            task.description.includes("Allocate resources") &&
-            (task.description.includes(projectName) ||
-              task.description.includes(projectCode))
-          ) {
-            await db
-              .update(schema.tasks)
-              .set({ status: "COMPLETED" })
-              .where(eq(schema.tasks.id, task.id));
+        if (demandTasks.length > 0) {
+          await db
+            .update(schema.tasks)
+            .set({ status: "COMPLETED" })
+            .where(
+              and(
+                eq(schema.tasks.entity_type, "DEMAND"),
+                eq(schema.tasks.entity_id, demand_id),
+                eq(schema.tasks.status, "DUE"),
+              ),
+            );
 
+          for (const task of demandTasks) {
             await createAuditLog({
               entity_type: "TASK",
               entity_id: task.id,
@@ -309,10 +262,81 @@ export async function POST(req: NextRequest) {
                 status: "COMPLETED",
                 completion_reason: "Resource allocation created",
                 allocation_id: results[0].id,
+                demand_id,
               },
             });
-
             completedTasksCount++;
+          }
+        }
+
+        // Auto-fulfill the demand now that a resource has been allocated
+        await db
+          .update(schema.resourceDemands)
+          .set({ demand_status: "FULFILLED" })
+          .where(eq(schema.resourceDemands.id, demand_id));
+
+        await createAuditLog({
+          entity_type: "DEMAND",
+          entity_id: demand_id,
+          operation: "UPDATE",
+          changed_by: user.id,
+          changed_fields: {
+            demand_status: { old: "REQUESTED", new: "FULFILLED" },
+            completion_reason: "Resource allocation created",
+            allocation_id: results[0].id,
+          },
+        });
+      } else {
+        // Fallback: match by project name/code in description
+        const allocationTasks = await db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.entity_type, "DEMAND"),
+              eq(schema.tasks.status, "DUE"),
+              eq(schema.tasks.owner_id, user.id),
+            ),
+          );
+
+        const projectDetails = await db
+          .select({
+            project_name: schema.projects.project_name,
+            project_code: schema.projects.project_code,
+          })
+          .from(schema.projects)
+          .where(eq(schema.projects.id, project_id));
+
+        if (allocationTasks.length > 0 && projectDetails.length > 0) {
+          const projectName = projectDetails[0].project_name;
+          const projectCode = projectDetails[0].project_code;
+
+          for (const task of allocationTasks) {
+            if (
+              task.description &&
+              task.description.includes("Allocate resource") &&
+              (task.description.includes(projectName) ||
+                task.description.includes(projectCode))
+            ) {
+              await db
+                .update(schema.tasks)
+                .set({ status: "COMPLETED" })
+                .where(eq(schema.tasks.id, task.id));
+
+              await createAuditLog({
+                entity_type: "TASK",
+                entity_id: task.id,
+                operation: "UPDATE",
+                changed_by: user.id,
+                changed_fields: {
+                  status: "COMPLETED",
+                  completion_reason: "Resource allocation created",
+                  allocation_id: results[0].id,
+                },
+              });
+
+              completedTasksCount++;
+            }
           }
         }
       }

@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoIcon, Plus, Trash2, X } from "lucide-react";
+import { LoadingSpinner } from "@/components/loading-spinner";
 import {
   Select,
   SelectContent,
@@ -17,565 +16,589 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Plus, Trash2, ChevronLeft, ChevronRight, InfoIcon } from "lucide-react";
+import type { ProjectRef as Project } from "@/lib/types";
+import amplitude from "@/lib/amplitude";
 
-interface Project {
-  id: string;
-  project_code: string;
-  project_name: string;
+// ── date helpers ──────────────────────────────────────────────────────────────
+
+/** Returns the Monday of the week containing `date`. */
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-interface LogEntry {
-  id: string; // Unique ID for tracking each entry in the UI
-  project_id: string;
-  hours: string;
-  notes: string;
+function dateToISO(date: Date): string {
+  return date.toISOString().split("T")[0];
 }
 
-export default function NewLogPage() {
-  const router = useRouter();
-  const { toast } = useToast();
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [fetchingProjects, setFetchingProjects] = useState(true);
-  const [allAllocations, setAllAllocations] = useState<any[]>([]); // Store all allocations
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [logDate, setLogDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
-  );
-  const [logEntries, setLogEntries] = useState<LogEntry[]>([
-    {
-      id: crypto.randomUUID(),
-      project_id: "",
-      hours: "",
-      notes: "",
-    },
-  ]);
-  const [errors, setErrors] = useState<Record<string, Record<string, string>>>(
-    {},
-  );
-  const [dateError, setDateError] = useState<string>("");
+function getWeekDays(weekStart: Date): Date[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+}
 
-  useEffect(() => {
-    fetchUserAllocations();
-  }, []);
+const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
-  // Update available projects when log date changes
-  useEffect(() => {
-    filterProjectsByDate(logDate);
-  }, [logDate, allAllocations]);
+/**
+ * Enforce hh:mm format as the user types.
+ * isDeleting: true when the last key pressed was Backspace/Delete — suppresses
+ * the auto-colon so the user doesn't get trapped in "08:" forever.
+ */
+function enforceTimeInput(raw: string, isDeleting: boolean): string {
+  if (raw === "") return "";
 
-  async function fetchUserAllocations() {
-    try {
-      setFetchingProjects(true);
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits === "") return "";
 
-      const token = localStorage.getItem("auth_token");
-      // Fetch only allocations for the current user
-      const params = new URLSearchParams();
-      if (user?.id) {
-        params.append("emp_id", user.id);
-      }
-      const response = await fetch(`/api/allocations?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch allocations");
-      }
-
-      const data = await response.json();
-      setAllAllocations(data.allocations || []);
-
-      // Filter projects for current date
-      filterProjectsByDate(logDate);
-    } catch (error) {
-      console.error("Error fetching allocations:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch your project allocations.",
-        variant: "destructive",
-      });
-    } finally {
-      setFetchingProjects(false);
-    }
+  if (digits.length <= 2) {
+    const h = Math.min(parseInt(digits, 10), 24);
+    const hStr = h.toString().padStart(digits.length === 2 ? 2 : 1, "0");
+    // Auto-insert colon only when typing forward (not deleting)
+    return digits.length === 2 && !isDeleting ? `${hStr}:` : hStr;
   }
 
-  function filterProjectsByDate(date: string) {
-    const projectsMap = new Map<string, Project>();
-    const selectedDate = new Date(date);
+  // 3–4 digits: format as HH:M or HH:MM
+  const h = Math.min(parseInt(digits.slice(0, 2), 10), 24);
+  const hh = h.toString().padStart(2, "0");
+  const mRaw = digits.slice(2); // 1 or 2 chars
+  if (mRaw.length === 1) {
+    // Partial minutes — show without padding so backspace feels natural
+    return `${hh}:${mRaw}`;
+  }
+  const m = Math.min(parseInt(mRaw, 10), 59);
+  return `${hh}:${m.toString().padStart(2, "0")}`;
+}
 
-    (allAllocations || []).forEach((allocation: any) => {
-      const startDate = new Date(allocation.start_date);
-      const endDate = allocation.end_date
-        ? new Date(allocation.end_date)
-        : null;
+/** Parse a complete "hh:mm" string to decimal hours. Returns NaN for incomplete/invalid input. */
+function parseHours(value: string): number {
+  if (!value || !value.trim()) return 0;
+  // Only accept fully-formed hh:mm (must contain colon with both parts)
+  const colonIdx = value.indexOf(":");
+  if (colonIdx < 1 || colonIdx === value.length - 1) return NaN;
+  const [hStr, mStr] = value.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m) || m < 0 || m > 59 || h < 0 || h > 24) return NaN;
+  return h + m / 60;
+}
 
-      // Check if the selected date falls within the allocation period
-      if (startDate <= selectedDate && (!endDate || endDate >= selectedDate)) {
-        const pid = allocation.project_id || allocation.project?.id;
-        const pcode =
-          allocation.project_code || allocation.project?.project_code;
-        const pname =
-          allocation.project_name || allocation.project?.project_name;
+/** Format decimal hours as "h:mm". E.g. 2.5 → "2:30". */
+function formatHours(decimal: number): string {
+  if (!decimal || decimal <= 0) return "–";
+  const h = Math.floor(decimal);
+  const m = Math.round((decimal - h) * 60);
+  return `${h}:${m.toString().padStart(2, "0")}`;
+}
 
+// ── types ─────────────────────────────────────────────────────────────────────
+
+interface WeekEntry {
+  id: string;
+  project_id: string;
+  notes: string;
+  hours: Record<string, string>; // ISO date → raw "hh:mm" string
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
+export default function WeeklyTimesheetPage() {
+  const router = useRouter();
+  const { user, authenticatedFetch } = useAuth();
+
+  const [weekStart, setWeekStart] = useState<Date>(() =>
+    getWeekStart(new Date()),
+  );
+  const [entries, setEntries] = useState<WeekEntry[]>([
+    { id: crypto.randomUUID(), project_id: "", notes: "", hours: {} },
+  ]);
+  const [allAllocations, setAllAllocations] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  // Track whether the last keypress was a deletion so enforceTimeInput can suppress colon auto-insert
+  const isDeletingRef = useRef(false);
+
+  const weekDays = getWeekDays(weekStart);
+  const workDays = weekDays.slice(0, 5); // Mon–Fri only
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // ── fetch allocations ───────────────────────────────────────────────────────
+  useEffect(() => {
+    async function fetchAllocations() {
+      setLoadingProjects(true);
+      try {
+        const params = new URLSearchParams();
+        if (user?.id) params.append("emp_id", user.id);
+        const res = await authenticatedFetch(`/api/allocations?${params}`);
+        const data = await res.json();
+        setAllAllocations(data.allocations || []);
+      } catch {
+        toast.error("Failed to load your project allocations");
+      } finally {
+        setLoadingProjects(false);
+      }
+    }
+    fetchAllocations();
+  }, [user?.id]);
+
+  // ── filter projects active during this week ─────────────────────────────────
+  useEffect(() => {
+    const weekEnd = weekDays[4]; // Friday
+    const map = new Map<string, Project>();
+
+    allAllocations.forEach((a) => {
+      const start = new Date(a.start_date);
+      const end = a.end_date ? new Date(a.end_date) : null;
+      if (start <= weekEnd && (!end || end >= weekDays[0])) {
+        const pid = a.project_id || a.project?.id;
         if (pid) {
-          projectsMap.set(pid, {
+          map.set(pid, {
             id: pid,
-            project_code: pcode || "N/A",
-            project_name: pname || "Unknown",
+            project_code: a.project_code || a.project?.project_code || "N/A",
+            project_name:
+              a.project_name || a.project?.project_name || "Unknown",
           });
         }
       }
     });
 
-    const projectsList = Array.from(projectsMap.values());
-    setProjects(projectsList);
+    setProjects(Array.from(map.values()));
+  }, [allAllocations, weekStart]);
 
-    if (projectsList.length === 0 && allAllocations.length > 0) {
-      toast({
-        title: "No Active Allocations for Selected Date",
-        description:
-          "You don't have any allocations for the selected date. Please choose a different date.",
-        variant: "destructive",
-      });
-    }
+  // ── week navigation ─────────────────────────────────────────────────────────
+  function shiftWeek(delta: number) {
+    setWeekStart((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + delta * 7);
+      return d;
+    });
   }
 
-  function addLogEntry() {
-    setLogEntries([
-      ...logEntries,
-      {
-        id: crypto.randomUUID(),
-        project_id: "",
-        hours: "",
-        notes: "",
-      },
+  // ── entry management ────────────────────────────────────────────────────────
+  function addEntry() {
+    setEntries((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), project_id: "", notes: "", hours: {} },
     ]);
   }
 
-  function removeLogEntry(id: string) {
-    if (logEntries.length === 1) {
-      toast({
-        title: "Cannot Remove",
-        description: "At least one project entry is required.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setLogEntries(logEntries.filter((entry) => entry.id !== id));
-    // Clear errors for this entry
-    setErrors((prev) => {
-      const newErrors = { ...prev };
-      delete newErrors[id];
-      return newErrors;
-    });
+  function removeEntry(id: string) {
+    if (entries.length === 1) return;
+    setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
-  function handleEntryChange(id: string, field: keyof LogEntry, value: string) {
-    setLogEntries(
-      logEntries.map((entry) =>
-        entry.id === id ? { ...entry, [field]: value } : entry,
+  function updateEntry(id: string, field: "project_id" | "notes", value: string) {
+    setEntries((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)),
+    );
+  }
+
+  function updateHours(id: string, dateISO: string, value: string) {
+    setEntries((prev) =>
+      prev.map((e) =>
+        e.id === id ? { ...e, hours: { ...e.hours, [dateISO]: value } } : e,
       ),
     );
-    // Clear error for this field
-    if (errors[id]?.[field]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        if (newErrors[id]) {
-          delete newErrors[id][field];
-          if (Object.keys(newErrors[id]).length === 0) {
-            delete newErrors[id];
-          }
-        }
-        return newErrors;
-      });
-    }
   }
 
-  function validateForm(): boolean {
-    const newErrors: Record<string, Record<string, string>> = {};
-    let isValid = true;
-
-    // Validate date
-    if (!logDate) {
-      setDateError("Please select a date");
-      isValid = false;
-    } else {
-      const selectedDate = new Date(logDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (selectedDate > today) {
-        setDateError("Cannot log hours for future dates");
-        isValid = false;
-      } else {
-        setDateError("");
-      }
-    }
-
-    // Validate each log entry
-    const usedProjects = new Set<string>();
-    logEntries.forEach((entry) => {
-      const entryErrors: Record<string, string> = {};
-
-      if (!entry.project_id) {
-        entryErrors.project_id = "Please select a project";
-        isValid = false;
-      } else if (usedProjects.has(entry.project_id)) {
-        entryErrors.project_id =
-          "Project already selected. Each project can only be logged once per day.";
-        isValid = false;
-      } else {
-        usedProjects.add(entry.project_id);
-      }
-
-      if (!entry.hours || entry.hours === "") {
-        entryErrors.hours = "Please enter hours worked";
-        isValid = false;
-      } else {
-        const hours = parseFloat(entry.hours);
-        if (isNaN(hours) || hours <= 0) {
-          entryErrors.hours = "Hours must be a positive number";
-          isValid = false;
-        } else if (hours > 24) {
-          entryErrors.hours = "Hours cannot exceed 24";
-          isValid = false;
-        }
-      }
-
-      if (Object.keys(entryErrors).length > 0) {
-        newErrors[entry.id] = entryErrors;
-      }
-    });
-
-    // Validate total hours
-    const totalHours = logEntries.reduce((sum, entry) => {
-      const hours = parseFloat(entry.hours);
-      return sum + (isNaN(hours) ? 0 : hours);
+  // ── totals ──────────────────────────────────────────────────────────────────
+  function dayTotal(dateISO: string): number {
+    return entries.reduce((sum, e) => {
+      const v = parseHours(e.hours[dateISO] || "");
+      return sum + (isNaN(v) ? 0 : v);
     }, 0);
-
-    if (totalHours > 24) {
-      toast({
-        title: "Validation Error",
-        description: `Total hours (${totalHours.toFixed(1)}) cannot exceed 24 hours in a day.`,
-        variant: "destructive",
-      });
-      isValid = false;
-    }
-
-    setErrors(newErrors);
-    return isValid;
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function rowTotal(entry: WeekEntry): number {
+    return workDays.reduce((sum, day) => {
+      const v = parseHours(entry.hours[dateToISO(day)] || "");
+      return sum + (isNaN(v) ? 0 : v);
+    }, 0);
+  }
 
-    if (!validateForm()) {
-      toast({
-        title: "Validation Error",
-        description: "Please fix the errors in the form before submitting.",
-        variant: "destructive",
-      });
+  // ── submit ──────────────────────────────────────────────────────────────────
+  async function handleSubmit() {
+    const logs: Array<{
+      project_id: string;
+      log_date: string;
+      hours: number;
+      notes: string | null;
+    }> = [];
+
+    for (const entry of entries) {
+      if (!entry.project_id) continue;
+      for (const day of workDays) {
+        const iso = dateToISO(day);
+        const raw = entry.hours[iso];
+        if (!raw || !raw.trim()) continue;
+
+        const h = parseHours(raw);
+        if (isNaN(h) || h <= 0) {
+          toast.error(
+            `Incomplete time "${raw}" on ${iso} — enter a full hh:mm value (e.g. 08:30).`,
+          );
+          return;
+        }
+        if (h > 24) {
+          toast.error(`Hours cannot exceed 24 for ${iso}.`);
+          return;
+        }
+        logs.push({
+          project_id: entry.project_id,
+          log_date: iso,
+          hours: Math.round(h * 100) / 100, // round to 2dp to match decimal(4,2) schema
+          notes: entry.notes || null,
+        });
+      }
+    }
+
+    if (logs.length === 0) {
+      toast.error("No hours entered. Fill in at least one cell before submitting.");
       return;
     }
 
-    setLoading(true);
+    for (const day of workDays) {
+      const total = dayTotal(dateToISO(day));
+      if (total > 24) {
+        toast.error(
+          `Total hours on ${dateToISO(day)} exceed 24h (${formatHours(total)}).`,
+        );
+        return;
+      }
+    }
 
+    setSubmitting(true);
     try {
-      const token = localStorage.getItem("auth_token");
-
-      // Prepare bulk submission payload
-      const payload = {
-        logs: logEntries.map((entry) => ({
-          project_id: entry.project_id,
-          log_date: logDate,
-          hours: parseFloat(entry.hours),
-          notes: entry.notes || null,
-        })),
-      };
-
-      const response = await fetch("/api/logs", {
+      const res = await authenticatedFetch("/api/logs", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logs }),
       });
 
-      const result = await response.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit logs");
 
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to create logs");
-      }
-
-      const successCount = result.successful || logEntries.length;
-      const failedCount = result.failed || 0;
-
-      if (failedCount > 0 && result.errors) {
-        const errorMessages = result.errors
-          .map((err: any) => {
-            const project = projects.find((p) => p.id === err.project_id);
-            return `${project?.project_code || "Unknown"}: ${err.error}`;
-          })
-          .join("\n");
-
-        toast({
-          title: "Partial Success",
-          description: `${successCount} log(s) created successfully, ${failedCount} failed:\n${errorMessages}`,
-          variant: "destructive",
-        });
+      const { successful, failed, errors: errs } = data;
+      if (failed > 0) {
+        const msgs = (errs as Array<{ error: string }>)
+          .map((e) => e.error)
+          .join("; ");
+        toast.warning(`${successful} submitted, ${failed} skipped (${msgs}).`);
       } else {
-        toast({
-          title: "Success",
-          description: `${successCount} work log(s) created successfully!`,
-        });
+        toast.success(`${successful} work log(s) submitted successfully!`);
       }
+      amplitude.track("log_submitted", { count: successful });
 
-      // Reset form and redirect
-      setLogEntries([
-        {
-          id: crypto.randomUUID(),
-          project_id: "",
-          hours: "",
-          notes: "",
-        },
-      ]);
       router.push("/logs");
-    } catch (error: any) {
-      console.error("Error submitting logs:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to submit work logs",
-        variant: "destructive",
-      });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  if (fetchingProjects) {
+  // ── render ──────────────────────────────────────────────────────────────────
+  if (loadingProjects) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Spinner className="h-8 w-8" />
+        <LoadingSpinner />
       </div>
     );
   }
 
+  const isFutureWeek = weekStart > today;
+  const weekLabel = `${workDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${workDays[4].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-4 max-w-screen-xl mx-auto">
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Create Daily Work Log</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Log work hours for multiple projects on the same day
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">Weekly Timesheet</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{weekLabel}</p>
         </div>
         <Link href="/logs">
-          <Button variant="outline">Back to Logs</Button>
+          <Button variant="outline" size="sm">← Back to Logs</Button>
         </Link>
       </div>
 
-      {projects.length === 0 ? (
+      {/* ── No allocations alert ── */}
+      {projects.length === 0 && (
         <Alert>
           <InfoIcon className="h-4 w-4" />
           <AlertDescription>
-            <p className="font-semibold mb-2">No Active Allocations</p>
-            <p>
-              You don't have any active project allocations. You need to be
-              assigned to a project before you can log work hours. Please
-              contact your Project Manager or HR to get assigned to a project.
-            </p>
-            <div className="mt-4">
-              <Link href="/allocations">
-                <Button variant="outline" size="sm">
-                  View My Allocations
-                </Button>
-              </Link>
-            </div>
+            <span className="font-semibold">No active allocations this week.</span>{" "}
+            Try a different week, or contact your PM/HR to be assigned to a project.{" "}
+            <Link href="/allocations" className="underline underline-offset-2">
+              View allocations →
+            </Link>
           </AlertDescription>
         </Alert>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Alert>
-            <InfoIcon className="h-4 w-4" />
-            <AlertDescription>
-              <p className="text-sm">
-                Record your daily work hours for projects you're assigned to.
-                You can log work for multiple projects on the same day. Hours
-                must be entered in decimal format (e.g., 8.5 for 8 hours 30
-                minutes). Total hours cannot exceed 24 hours per day.
-              </p>
-            </AlertDescription>
-          </Alert>
+      )}
 
-          {/* Date Picker */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col md:flex-row md:items-end md:gap-4">
-                <div className="space-y-2 flex-1">
-                  <Label htmlFor="log_date">
-                    Date <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="log_date"
-                    type="date"
-                    value={logDate}
-                    onChange={(e) => {
-                      setLogDate(e.target.value);
-                      setDateError("");
-                    }}
-                    max={new Date().toISOString().split("T")[0]}
-                    disabled={loading}
-                    className={dateError ? "border-red-500" : ""}
-                  />
-                </div>
-                {dateError && (
-                  <p className="text-sm text-red-500 md:mb-2">{dateError}</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+      {/* ── Week navigation ── */}
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => shiftWeek(-1)}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Input
+          type="date"
+          className="h-8 w-36 text-sm"
+          value={dateToISO(weekStart)}
+          onChange={(e) => {
+            if (e.target.value)
+              setWeekStart(getWeekStart(new Date(e.target.value + "T12:00:00")));
+          }}
+        />
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => shiftWeek(1)}
+          disabled={isFutureWeek}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <span className="text-sm text-muted-foreground ml-1">{weekLabel}</span>
+      </div>
 
-          {/* Project Entries */}
-          <div className="space-y-4">
-            {logEntries.map((entry, index) => (
-              <Card key={entry.id}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                  <CardTitle className="text-base">
-                    Project {index + 1}
-                  </CardTitle>
-                  {logEntries.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLogEntry(entry.id)}
-                      disabled={loading}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Project Selector */}
-                    <div className="space-y-2">
-                      <Label htmlFor={`project_${entry.id}`}>
-                        Project <span className="text-red-500">*</span>
-                      </Label>
+      {/* ── Timesheet card ── */}
+      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <table className="w-full text-sm table-fixed border-collapse">
+          {/* Column widths: Project gets ~40%, 5 days share ~48%, Total ~8%, del ~4% */}
+          <colgroup>
+            <col className="w-[38%]" />
+            {workDays.map((d) => (
+              <col key={dateToISO(d)} className="w-[11%]" />
+            ))}
+            <col className="w-[7%]" />
+            <col className="w-[4%]" />
+          </colgroup>
+
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                Project
+              </th>
+              {workDays.map((day, i) => {
+                const iso = dateToISO(day);
+                const isToday = iso === dateToISO(today);
+                return (
+                  <th
+                    key={iso}
+                    className={`text-center px-1 py-3 font-semibold text-xs uppercase tracking-wide ${
+                      isToday
+                        ? "text-primary bg-primary/5"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <div>{WEEKDAY_NAMES[i]}</div>
+                    <div className="font-normal normal-case text-[11px] mt-0.5">
+                      {day.getDate()}/{day.getMonth() + 1}
+                    </div>
+                  </th>
+                );
+              })}
+              <th className="text-center px-1 py-3 font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                Total
+              </th>
+              <th />
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-border">
+            {entries.map((entry, idx) => {
+              const rTotal = rowTotal(entry);
+              const isEven = idx % 2 === 0;
+              return (
+                <React.Fragment key={entry.id}>
+                  {/* ── Input row ── */}
+                  <tr
+                    className={`${isEven ? "" : "bg-muted/20"} transition-colors`}
+                  >
+                    {/* Project selector */}
+                    <td className="px-3 pt-3 pb-1 align-top">
                       <Select
                         value={entry.project_id}
-                        onValueChange={(value) =>
-                          handleEntryChange(entry.id, "project_id", value)
-                        }
-                        disabled={loading}
+                        onValueChange={(v) => updateEntry(entry.id, "project_id", v)}
                       >
-                        <SelectTrigger
-                          id={`project_${entry.id}`}
-                          className={
-                            errors[entry.id]?.project_id ? "border-red-500" : ""
-                          }
-                        >
-                          <SelectValue placeholder="Select a project" />
+                        <SelectTrigger className="h-9 text-sm w-full">
+                          <SelectValue placeholder="Select a project…" />
                         </SelectTrigger>
                         <SelectContent>
-                          {projects.map((project) => (
-                            <SelectItem key={project.id} value={project.id}>
-                              {project.project_code} - {project.project_name}
+                          {projects.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              <span className="font-medium">{p.project_code}</span>
+                              <span className="text-muted-foreground ml-1">– {p.project_name}</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      {errors[entry.id]?.project_id && (
-                        <p className="text-sm text-red-500">
-                          {errors[entry.id].project_id}
-                        </p>
-                      )}
-                    </div>
+                    </td>
 
-                    {/* Hours Input */}
-                    <div className="space-y-2">
-                      <Label htmlFor={`hours_${entry.id}`}>
-                        Hours Worked <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id={`hours_${entry.id}`}
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        max="24"
-                        placeholder="e.g., 8 or 8.5"
-                        value={entry.hours}
-                        onChange={(e) =>
-                          handleEntryChange(entry.id, "hours", e.target.value)
-                        }
-                        disabled={loading}
-                        className={
-                          errors[entry.id]?.hours ? "border-red-500" : ""
-                        }
-                      />
-                      {errors[entry.id]?.hours && (
-                        <p className="text-sm text-red-500">
-                          {errors[entry.id].hours}
-                        </p>
-                      )}
-                    </div>
+                    {/* Day hour inputs */}
+                    {workDays.map((day) => {
+                      const iso = dateToISO(day);
+                      const isToday = iso === dateToISO(today);
+                      const isFuture = day > today;
+                      const val = entry.hours[iso] || "";
+                      const parsed = parseHours(val);
+                      const hasValue = val.trim() !== "";
+                      const isInvalid = hasValue && isNaN(parsed);
+                      return (
+                        <td
+                          key={iso}
+                          className={`px-1 pt-3 pb-1 align-top ${isToday ? "bg-primary/5" : ""}`}
+                        >
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="–"
+                            maxLength={5}
+                            value={val}
+                            onKeyDown={(e) => {
+                              isDeletingRef.current =
+                                e.key === "Backspace" || e.key === "Delete";
+                              // Block anything that isn't a digit or a control key
+                              if (
+                                !/^\d$/.test(e.key) &&
+                                ![
+                                  "Backspace",
+                                  "Delete",
+                                  "Tab",
+                                  "ArrowLeft",
+                                  "ArrowRight",
+                                  "ArrowUp",
+                                  "ArrowDown",
+                                ].includes(e.key) &&
+                                !e.ctrlKey &&
+                                !e.metaKey
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
+                            onChange={(e) =>
+                              updateHours(
+                                entry.id,
+                                iso,
+                                enforceTimeInput(
+                                  e.target.value,
+                                  isDeletingRef.current,
+                                ),
+                              )
+                            }
+                            disabled={isFuture || !entry.project_id}
+                            className={`h-9 text-center text-sm px-1 ${
+                              isInvalid
+                                ? "border-destructive focus-visible:ring-destructive"
+                                : hasValue
+                                ? "border-primary/40 bg-primary/5 font-medium"
+                                : ""
+                            }`}
+                          />
+                        </td>
+                      );
+                    })}
 
-                    {/* Notes Input */}
-                    <div className="space-y-2">
-                      <Label htmlFor={`notes_${entry.id}`}>Notes</Label>
-                      <Input
-                        id={`notes_${entry.id}`}
-                        type="text"
-                        placeholder="Work details (optional)"
+                    {/* Row total */}
+                    <td className="px-1 pt-3 pb-1 text-center align-middle">
+                      <span className={`text-sm font-semibold tabular-nums ${rTotal > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                        {rTotal > 0 ? formatHours(rTotal) : "–"}
+                      </span>
+                    </td>
+
+                    {/* Delete */}
+                    <td className="pr-2 pt-3 pb-1 text-center align-middle">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeEntry(entry.id)}
+                        disabled={entries.length === 1}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+
+                  {/* ── Description sub-row ── */}
+                  <tr
+                    className={`${isEven ? "" : "bg-muted/20"}`}
+                  >
+                    <td colSpan={8} className="px-3 pt-1 pb-3">
+                      <textarea
+                        rows={2}
+                        placeholder="Describe your tasks for this project this week…"
                         value={entry.notes}
-                        onChange={(e) =>
-                          handleEntryChange(entry.id, "notes", e.target.value)
-                        }
-                        disabled={loading}
+                        onChange={(e) => updateEntry(entry.id, "notes", e.target.value)}
+                        className="w-full text-sm border rounded-md px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring bg-background/60 placeholder:text-muted-foreground/50 transition-colors"
                       />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    </td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
+          </tbody>
 
-          {/* Add Another Project Button */}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={addLogEntry}
-            disabled={loading}
-            className="w-full"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Another Project
-          </Button>
+          {/* ── Daily totals footer ── */}
+          <tfoot>
+            <tr className="border-t-2 bg-muted/30">
+              <td className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Daily total
+              </td>
+              {workDays.map((day) => {
+                const iso = dateToISO(day);
+                const total = dayTotal(iso);
+                const isToday = iso === dateToISO(today);
+                return (
+                  <td
+                    key={iso}
+                    className={`py-3 px-1 text-center tabular-nums font-semibold text-sm ${
+                      isToday ? "bg-primary/5 text-primary" : ""
+                    } ${total > 0 ? "text-foreground" : "text-muted-foreground/40"}`}
+                  >
+                    {total > 0 ? formatHours(total) : "–"}
+                  </td>
+                );
+              })}
+              <td />
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-          {/* Submit Buttons */}
-          <div className="flex gap-3 justify-end">
-            <Link href="/logs">
-              <Button type="button" variant="outline" disabled={loading}>
-                Cancel
-              </Button>
-            </Link>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Spinner className="mr-2 h-4 w-4" />
-                  Submitting...
-                </>
-              ) : (
-                <>Submit All Logs ({logEntries.length})</>
-              )}
-            </Button>
-          </div>
-        </form>
-      )}
+      {/* ── Actions ── */}
+      <div className="flex items-center justify-between pt-1">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={addEntry}
+          disabled={projects.length === 0}
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          Add Project Row
+        </Button>
+
+        <Button
+          size="sm"
+          onClick={handleSubmit}
+          disabled={submitting || projects.length === 0}
+          className="min-w-[140px]"
+        >
+          {submitting && <LoadingSpinner className="mr-2 h-3.5 w-3.5" />}
+          {submitting ? "Submitting…" : "Submit Timesheet"}
+        </Button>
+      </div>
     </div>
   );
 }

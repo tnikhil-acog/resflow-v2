@@ -51,22 +51,32 @@ INSERT INTO employees (
   exited_on
 )
 SELECT
-  employee_code,
-  full_name,
-  email,
+  NULLIF(employee_code, ''),
+  NULLIF(full_name, ''),
+  NULLIF(email, ''),
   to_date(joined_on, 'DD-Mon-YYYY'),
   gender::gender,
   employee_type::employee_type,
-  working_location,
-  employee_design,
+  COALESCE(NULLIF(working_location, ''), 'Unknown'),
+  COALESCE(NULLIF(employee_design, ''), 'Unknown'),
   d.id,  -- Map department name to department_id
   experience_years,
   college,
   educational_stream,
   COALESCE(NULLIF(ldap_username, ''), employee_code),
-  -- Automatically assign HR role to employees in HR & Admin department
+  -- HR & Admin department → always HR role
+  -- CSV role is already HR → keep HR (covers HR employees outside HR & Admin dept)
+  -- Reporting managers (appear as reporting_manager_name for any other employee) → PM role
+  -- Everyone else → role from CSV
   CASE 
     WHEN s.department = 'HR & Admin' THEN 'HR'::employee_role
+    WHEN trim(s.employee_role) = 'HR' THEN 'HR'::employee_role
+    WHEN s.full_name IN (
+      SELECT DISTINCT reporting_manager_name
+      FROM employees_staging
+      WHERE reporting_manager_name IS NOT NULL
+        AND reporting_manager_name <> ''
+    ) THEN 'PM'::employee_role
     ELSE employee_role::employee_role
   END,
   resume_url,

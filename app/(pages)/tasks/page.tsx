@@ -37,21 +37,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface Task {
-  id: string;
-  description: string;
-  due_on: string;
-  status: string;
-  entity_type: string;
-  entity_id: string;
-  owner_name: string;
-  assigned_by: string;
-  created_at: string;
-}
+import type { Task } from "@/lib/types";
 
 export default function TasksPage() {
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
@@ -84,7 +73,7 @@ export default function TasksPage() {
 
       case "DEMAND":
         const isAllocationTask =
-          task.description.includes("Allocate resources");
+          task.description.includes("Allocate resource");
         const isApprovalTask = task.description.includes(
           "Review resource demand",
         );
@@ -97,7 +86,10 @@ export default function TasksPage() {
         }
 
         if (isAllocationTask && user?.employee_role === "hr_executive") {
-          return { label: "Allocate", href: `/allocations?${taskIdParam}` };
+          return {
+            label: "Allocate",
+            href: `/allocations/new?${taskIdParam}&demand_id=${task.entity_id}`,
+          };
         }
         break;
 
@@ -117,29 +109,17 @@ export default function TasksPage() {
 
   const fetchTasks = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      if (!token) {
-        window.location.href = "/login";
-        return;
-      }
 
       let url = `/api/tasks?view=${activeTab}`;
       if (statusFilter !== "all") {
         url += `&status=${statusFilter}`;
       }
 
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(url);
 
       if (response.ok) {
         const data = await response.json();
         setTasks(data.tasks || []);
-      } else if (response.status === 401) {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
       }
     } catch (error) {
       console.error("Error fetching tasks:", error);

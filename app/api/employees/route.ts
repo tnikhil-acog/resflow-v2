@@ -46,7 +46,7 @@ import { db, schema } from "@/lib/db";
 import { getCurrentUser, checkRole } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { toDateString } from "@/lib/date-utils";
-import { checkUniqueness, getCount } from "@/lib/db-helpers";
+import { checkUniqueness, getCount, getPMVisibleEmployeeIds } from "@/lib/db-helpers";
 import {
   ErrorResponses,
   validateRequiredFields,
@@ -203,35 +203,6 @@ async function handleGetEmployee(
     if (id !== user.id) {
       return ErrorResponses.accessDenied();
     }
-  } else if (user.employee_role === "project_manager") {
-    // Check if viewing self or team member
-    if (id !== user.id) {
-      const managedProjects = await db
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(eq(schema.projects.project_manager_id, user.id));
-
-      const projectIds = managedProjects.map((p) => p.id);
-
-      if (projectIds.length > 0) {
-        const [allocation] = await db
-          .select({ emp_id: schema.projectAllocation.emp_id })
-          .from(schema.projectAllocation)
-          .where(
-            and(
-              eq(schema.projectAllocation.emp_id, id),
-              inArray(schema.projectAllocation.project_id, projectIds),
-            ),
-          )
-          .limit(1);
-
-        if (!allocation) {
-          return ErrorResponses.accessDenied();
-        }
-      } else {
-        return ErrorResponses.accessDenied();
-      }
-    }
   }
 
   // Fetch employee
@@ -289,9 +260,19 @@ async function handleListEmployees(
   const department_id = searchParams.get("department_id");
   const role = searchParams.get("role");
   const search = searchParams.get("search");
+  const pm_scope = searchParams.get("pm_scope");
   const { page, limit, offset } = getPaginationParams(new URL(req.url));
 
   const whereConditions: any[] = [];
+
+  // PM defaults to all employees; optional pm_scope=my_team restricts to team + reportees.
+  if (user.employee_role === "project_manager" && pm_scope === "my_team") {
+    const visibleIds = await getPMVisibleEmployeeIds(user.id);
+    if (visibleIds.length === 0) {
+      return successResponse({ employees: [], total: 0, page, limit });
+    }
+    whereConditions.push(inArray(schema.employees.id, visibleIds));
+  }
 
   if (status) {
     whereConditions.push(eq(schema.employees.status, status as any));

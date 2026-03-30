@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { DemandFormFields } from "@/components/forms/demand-form-fields";
+import amplitude from "@/lib/amplitude";
 
 interface Project {
   id: string;
@@ -62,7 +63,7 @@ export default function CreateDemandPage() {
 
 function CreateDemandContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -99,7 +100,6 @@ function CreateDemandContent() {
 
   const fetchProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
 
       // PM can only see their managed projects
@@ -110,8 +110,7 @@ function CreateDemandContent() {
         params.append("status", "ACTIVE");
       }
 
-      const response = await fetch(`/api/projects?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/projects?${params.toString()}`, {
       });
 
       if (response.ok) {
@@ -126,9 +125,7 @@ function CreateDemandContent() {
 
   const fetchDepartments = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/departments", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/departments", {
       });
 
       if (response.ok) {
@@ -148,12 +145,10 @@ function CreateDemandContent() {
 
   const fetchSkills = async (departmentId: string) => {
     try {
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
       params.append("department_id", departmentId);
 
-      const response = await fetch(`/api/skills?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/skills?${params.toString()}`, {
       });
 
       if (response.ok) {
@@ -204,12 +199,10 @@ function CreateDemandContent() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/demands", {
+      const response = await authenticatedFetch("/api/demands", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           action: "create",
@@ -227,6 +220,7 @@ function CreateDemandContent() {
       }
 
       toast.success("Demand created successfully");
+      amplitude.track("demand_raised", { role_required: formData.role_required });
       router.push("/demands");
     } catch (error) {
       console.error("Error creating demand:", error);

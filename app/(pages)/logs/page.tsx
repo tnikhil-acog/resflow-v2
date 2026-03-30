@@ -65,7 +65,7 @@ export default function LogsPage() {
 
 function LogsContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [logs, setLogs] = useState<WorkLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -105,14 +105,12 @@ function LogsContent() {
 
   const fetchEmployeeProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
       if (user?.id) {
         params.append("emp_id", user.id);
       }
 
-      const response = await fetch(`/api/allocations?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/allocations?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -142,7 +140,6 @@ function LogsContent() {
   const fetchLogs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
 
       const params = new URLSearchParams({
         start_date: startDate,
@@ -164,8 +161,7 @@ function LogsContent() {
         params.append("emp_id", selectedEmployee);
       }
 
-      const response = await fetch(`/api/logs?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/logs?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -205,10 +201,8 @@ function LogsContent() {
     setDeleting(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/logs/${logToDelete.id}`, {
+      const response = await authenticatedFetch(`/api/logs/${logToDelete.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -374,7 +368,7 @@ function LogsContent() {
             <Button asChild>
               <Link href="/logs/new">
                 <Plus className="h-4 w-4 mr-2" />
-                Log Work
+                Log Timesheet
               </Link>
             </Button>
           </div>

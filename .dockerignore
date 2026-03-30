@@ -1,0 +1,32 @@
+# Version control and metadata
+.git
+.gitignore
+.vscode
+
+# Dependencies and build artifacts
+node_modules
+.next
+out
+coverage
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data and logs
+backups
+data
+postgres_data
+*.log
+
+# Tooling caches
+pnpm-store
+.npm
+
+# Documentation and scratch files
+docs
+*.md
+
+# OS/editor cruft
+.DS_Store

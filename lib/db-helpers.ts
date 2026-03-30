@@ -84,6 +84,35 @@ export async function getPMTeamMemberIds(
 }
 
 /**
+ * Get all employee IDs that report directly to a manager (via reporting_manager_id).
+ * Includes the manager themselves.
+ */
+export async function getReportingEmployeeIds(
+  managerId: string,
+): Promise<string[]> {
+  const directReports = await db
+    .select({ id: schema.employees.id })
+    .from(schema.employees)
+    .where(eq(schema.employees.reporting_manager_id, managerId));
+
+  return [managerId, ...directReports.map((e) => e.id)];
+}
+
+/**
+ * Get the union of project-team members AND direct reports for a PM.
+ * Used when the PM has no projects but is still a reporting manager.
+ */
+export async function getPMVisibleEmployeeIds(
+  projectManagerId: string,
+): Promise<string[]> {
+  const [projectTeam, reportees] = await Promise.all([
+    getPMTeamMemberIds(projectManagerId),
+    getReportingEmployeeIds(projectManagerId),
+  ]);
+  return [...new Set([...projectTeam, ...reportees])];
+}
+
+/**
  * Check if a project is managed by a specific project manager
  */
 export async function isProjectManager(

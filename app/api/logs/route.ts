@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser, checkRole } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
-import { isProjectManager, getCount } from "@/lib/db-helpers";
+import { isProjectManager, getCount, getPMVisibleEmployeeIds } from "@/lib/db-helpers";
 import {
   ErrorResponses,
   validateRequiredFields,
@@ -86,7 +86,7 @@ async function handleCreate(req: NextRequest) {
             emp_id: user.id,
             project_id,
             log_date,
-            hours: hours.toString(),
+            hours: hoursNum.toFixed(2), // always 2dp to match decimal(4,2) schema
             notes: notes || null,
             locked: false,
           })
@@ -317,7 +317,7 @@ async function handleList(req: NextRequest) {
     // Employee can only see their own logs
     whereConditions.push(eq(schema.dailyProjectLogs.emp_id, user.id));
   } else if (checkRole(user, ["project_manager"])) {
-    // PM can see logs for their projects
+    // PM can see logs for their projects; fall back to reporting employees if no projects
     const pmProjects = await db
       .select({ id: schema.projects.id })
       .from(schema.projects)
@@ -329,8 +329,14 @@ async function handleList(req: NextRequest) {
         inArray(schema.dailyProjectLogs.project_id, projectIds),
       );
     } else {
-      // PM has no projects, return empty
-      return successResponse({ logs: [], total: 0, page, limit });
+      // No projects managed — fall back to logs by direct reports
+      const visibleEmpIds = await getPMVisibleEmployeeIds(user.id);
+      if (visibleEmpIds.length === 0) {
+        return successResponse({ logs: [], total: 0, page, limit });
+      }
+      whereConditions.push(
+        inArray(schema.dailyProjectLogs.emp_id, visibleEmpIds),
+      );
     }
   }
   // hr_executive can see all logs

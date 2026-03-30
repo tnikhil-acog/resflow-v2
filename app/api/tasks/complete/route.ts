@@ -20,7 +20,7 @@ import {
   validateRequiredFields,
   successResponse,
 } from "@/lib/api-helpers";
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -77,9 +77,64 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
+    // For shared task types (DEMAND, EMPLOYEE_SKILL), propagate completion to all
+    // sibling tasks assigned to other HR executives for the same entity.
+    // Individual task types (e.g. PROJECT_ALLOCATION) are NOT propagated.
+    const SHARED_ENTITY_TYPES = ["DEMAND", "EMPLOYEE_SKILL"];
+    let siblingTasksCompleted = 0;
+
+    if (
+      task.entity_type &&
+      SHARED_ENTITY_TYPES.includes(task.entity_type) &&
+      task.entity_id
+    ) {
+      // Find all other DUE tasks for the same entity
+      const siblingTasks = await db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.entity_type, task.entity_type),
+            eq(schema.tasks.entity_id, task.entity_id),
+            eq(schema.tasks.status, "DUE"),
+            ne(schema.tasks.id, id),
+          ),
+        );
+
+      if (siblingTasks.length > 0) {
+        await db
+          .update(schema.tasks)
+          .set({ status: "COMPLETED" })
+          .where(
+            and(
+              eq(schema.tasks.entity_type, task.entity_type),
+              eq(schema.tasks.entity_id, task.entity_id),
+              eq(schema.tasks.status, "DUE"),
+              ne(schema.tasks.id, id),
+            ),
+          );
+
+        // Create audit logs for sibling task completions
+        for (const siblingTask of siblingTasks) {
+          await createAuditLog({
+            entity_type: "TASK",
+            entity_id: siblingTask.id,
+            operation: "UPDATE",
+            changed_by: user.id,
+            changed_fields: {
+              status: "COMPLETED",
+              completion_reason: `Auto-completed when task ${id} was marked done`,
+            },
+          });
+        }
+        siblingTasksCompleted = siblingTasks.length;
+      }
+    }
+
     return successResponse({
       id: updated.id,
       status: updated.status,
+      sibling_tasks_completed: siblingTasksCompleted,
     });
   } catch (error) {
     console.error("Error completing task:", error);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -69,30 +69,7 @@ interface EmployeeDetails {
   joined_on: string;
   exited_on?: string;
 }
-
-interface Allocation {
-  id: string;
-  project_id: string;
-  project_code: string;
-  project_name: string;
-  role: string;
-  allocation_percentage: number;
-  is_billable: boolean;
-  start_date: string;
-  end_date?: string;
-  status: string;
-}
-
-interface Skill {
-  id: string;
-  skill_id: string;
-  skill_name: string;
-  department_name: string;
-  status: string;
-  requested_on: string;
-  approved_on?: string;
-  proficiency_level?: string;
-}
+import type { Allocation, EmployeeSkill as Skill } from "@/lib/types";
 
 export default function EmployeeDetailPage() {
   return (
@@ -106,7 +83,7 @@ function EmployeeDetailContent() {
   const params = useParams();
   const employeeId = params.id as string;
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
 
   const [employee, setEmployee] = useState<EmployeeDetails | null>(null);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
@@ -115,7 +92,7 @@ function EmployeeDetailContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [isEditing, setIsEditing] = useState(false);
-  const [hasShownPermissionError, setHasShownPermissionError] = useState(false);
+  const hasShownPermissionErrorRef = useRef(false);
 
   const [resumeUrl, setResumeUrl] = useState("");
   const [college, setCollege] = useState("");
@@ -139,34 +116,22 @@ function EmployeeDetailContent() {
     try {
       setLoading(true);
       setError("");
-      const token = localStorage.getItem("auth_token");
-
-      if (!token) {
-        setError("Not authenticated");
-        return;
-      }
-
-      // If employee tries to view someone else's profile, redirect to their own
-      if (isEmployee && !isOwnProfile) {
-        router.push(`/employees/${user?.id}`);
-        return;
-      }
-
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/employees?action=get&id=${employeeId}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
       if (!response.ok) {
-        if (response.status === 403 && !hasShownPermissionError) {
-          setHasShownPermissionError(true);
-          toast.error("Access Denied", {
-            description:
-              "You don't have permission to view this employee's details.",
-          });
-          router.push("/employees");
+        if (response.status === 403) {
+          if (!hasShownPermissionErrorRef.current) {
+            hasShownPermissionErrorRef.current = true;
+            toast.error("Access Denied", {
+              description:
+                "You don't have permission to view this employee's details.",
+            });
+          }
+          router.replace("/employees");
           return;
         }
         throw new Error("Failed to fetch employee");
@@ -196,11 +161,9 @@ function EmployeeDetailContent() {
 
   const fetchAllocations = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/allocations?employee_id=${employeeId}&limit=100`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -215,11 +178,9 @@ function EmployeeDetailContent() {
 
   const fetchSkills = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/employee-skills?employee_id=${employeeId}&limit=100`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -237,13 +198,9 @@ function EmployeeDetailContent() {
     setError("");
 
     try {
-      const token = localStorage.getItem("auth_token");
-      if (!token) throw new Error("Not authenticated");
-
-      const response = await fetch("/api/employees", {
+      const response = await authenticatedFetch("/api/employees", {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

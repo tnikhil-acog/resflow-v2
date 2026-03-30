@@ -38,11 +38,140 @@ interface AuditLog {
   id: string;
   entity_type: string;
   entity_id: string;
+  entity_label: string | null;
   operation: string;
   changed_by: string;
   changed_by_name: string;
   changed_at: string;
   changed_fields: Record<string, any> | null;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  emp_id: "Employee",
+  project_id: "Project",
+  skill_id: "Skill",
+  department_id: "Department",
+  client_id: "Client",
+  phase_id: "Phase",
+  reporting_manager_id: "Reporting Manager",
+  owner_id: "Owner",
+  assigned_by: "Assigned By",
+  approved_by: "Approved By",
+  approved_at: "Approved On",
+  demand_status: "Demand Status",
+  status: "Status",
+  role: "Role",
+  allocation_percentage: "Allocation %",
+  start_date: "Start Date",
+  end_date: "End Date",
+  billability: "Billable",
+  full_name: "Full Name",
+  email: "Email",
+  employee_code: "Employee Code",
+  employee_role: "Role",
+  employee_type: "Employment Type",
+  employee_design: "Designation",
+  experience_years: "Years of Experience",
+  working_location: "Location",
+  proficiency_level: "Proficiency Level",
+  project_name: "Project Name",
+  project_code: "Project Code",
+  project_type: "Project Type",
+  hours: "Hours",
+  log_date: "Log Date",
+  notes: "Notes",
+  locked: "Locked",
+  report_type: "Report Type",
+  description: "Description",
+  due_on: "Due Date",
+  joined_on: "Joined On",
+  exited_on: "Exited On",
+  skill_ids: "Skills",
+  completion_reason: "Reason",
+  action: "Action",
+  phase_name: "Phase Name",
+  content: "Content (truncated)",
+};
+
+// Internal plumbing IDs — not useful to display standalone
+const HIDDEN_FIELDS = new Set(["allocation_id", "demand_id"]);
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function formatValue(value: any): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string" && UUID_RE.test(value))
+    return `${value.slice(0, 8)}… (ID)`;
+  if (Array.isArray(value)) {
+    if (value.every((v) => typeof v === "string" && UUID_RE.test(v)))
+      return `${value.length} item(s)`;
+    return value.join(", ");
+  }
+  const str = String(value);
+  return str.length > 120 ? str.slice(0, 120) + "…" : str;
+}
+
+function ChangedFieldsDisplay({
+  changedFields,
+}: {
+  changedFields: Record<string, any>;
+}) {
+  const entries = Object.entries(changedFields).filter(
+    ([key]) => !HIDDEN_FIELDS.has(key),
+  );
+
+  if (entries.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground italic">No detail available</p>
+    );
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border rounded">
+        <thead className="bg-muted/40">
+          <tr>
+            <th className="text-left p-2 font-medium w-1/4">Field</th>
+            <th className="text-left p-2 font-medium">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(([key, value]) => {
+            const label =
+              FIELD_LABELS[key] ??
+              key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+            const isDiff =
+              value !== null &&
+              typeof value === "object" &&
+              !Array.isArray(value) &&
+              ("old" in value || "new" in value);
+
+            return (
+              <tr key={key} className="border-t">
+                <td className="p-2 font-medium text-muted-foreground whitespace-nowrap">
+                  {label}
+                </td>
+                <td className="p-2">
+                  {isDiff ? (
+                    <span className="flex items-center gap-2">
+                      <span className="line-through text-muted-foreground">
+                        {formatValue(value.old)}
+                      </span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="font-medium">{formatValue(value.new)}</span>
+                    </span>
+                  ) : (
+                    formatValue(value)
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function AuditPage() {
@@ -55,7 +184,7 @@ export default function AuditPage() {
 
 function AuditContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -127,7 +256,6 @@ function AuditContent() {
   const fetchAuditLogs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
 
       params.append("page", page.toString());
@@ -140,8 +268,7 @@ function AuditContent() {
       if (endDateFilter) params.append("end_date", endDateFilter);
       if (searchQuery) params.append("search", searchQuery);
 
-      const response = await fetch(`/api/audit?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/audit?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -350,7 +477,7 @@ function AuditContent() {
                     <tr>
                       <th className="w-10 p-3"></th>
                       <th className="text-left p-3 font-medium">Entity Type</th>
-                      <th className="text-left p-3 font-medium">Entity ID</th>
+                      <th className="text-left p-3 font-medium">Entity</th>
                       <th className="text-left p-3 font-medium">Operation</th>
                       <th className="text-left p-3 font-medium">Changed By</th>
                       <th className="text-left p-3 font-medium">Changed At</th>
@@ -385,8 +512,14 @@ function AuditContent() {
                                 {log.entity_type.replace(/_/g, " ")}
                               </Badge>
                             </td>
-                            <td className="p-3 font-mono text-xs">
-                              {log.entity_id.slice(0, 8)}...
+                            <td className="p-3 text-sm">
+                              {log.entity_label ? (
+                                <span>{log.entity_label}</span>
+                              ) : (
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {log.entity_id.slice(0, 8)}…
+                                </span>
+                              )}
                             </td>
                             <td className="p-3">
                               <Badge
@@ -410,22 +543,24 @@ function AuditContent() {
                               className="bg-muted/10"
                             >
                               <td colSpan={6} className="p-4">
-                                <div className="space-y-2">
-                                  <div className="font-medium text-sm">
-                                    Changed Fields:
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-4 text-sm">
+                                    <span className="text-muted-foreground">
+                                      Full entity ID:
+                                    </span>
+                                    <span className="font-mono text-xs">
+                                      {log.entity_id}
+                                    </span>
                                   </div>
+                                  <div className="font-medium text-sm">Changes:</div>
                                   {log.changed_fields ? (
-                                    <pre className="bg-background p-3 rounded border text-xs overflow-x-auto">
-                                      {JSON.stringify(
-                                        log.changed_fields,
-                                        null,
-                                        2,
-                                      )}
-                                    </pre>
+                                    <ChangedFieldsDisplay
+                                      changedFields={log.changed_fields}
+                                    />
                                   ) : (
-                                    <div className="text-sm text-muted-foreground">
-                                      No changed fields data available
-                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                      No detail available
+                                    </p>
                                   )}
                                 </div>
                               </td>

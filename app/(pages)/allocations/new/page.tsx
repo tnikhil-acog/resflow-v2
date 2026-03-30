@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import {
   Card,
@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { AllocationFormFields } from "@/components/forms/allocation-form-fields";
+import { useAuth } from "@/lib/auth-context";
+import amplitude from "@/lib/amplitude";
 
 interface Employee {
   id: string;
@@ -61,6 +63,9 @@ export default function CreateAllocationPage() {
 
 function CreateAllocationContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { authenticatedFetch } = useAuth();
+  const demandId = searchParams.get("demand_id") || null;
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
@@ -108,10 +113,8 @@ function CreateAllocationContent() {
 
   const fetchEmployees = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       // Fetch all active employees with high limit
-      const response = await fetch("/api/employees?limit=999&status=ACTIVE", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/employees?limit=999&status=ACTIVE", {
       });
 
       if (response.ok) {
@@ -130,10 +133,8 @@ function CreateAllocationContent() {
 
   const fetchProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       // Fetch all active projects with high limit
-      const response = await fetch("/api/projects?limit=999", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/projects?limit=999", {
       });
 
       if (response.ok) {
@@ -156,11 +157,9 @@ function CreateAllocationContent() {
 
   const fetchRemainingCapacity = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/allocations?action=capacity&employee_id=${formData.employee_id}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -243,7 +242,6 @@ function CreateAllocationContent() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Build payload based on mode
       const payload: any = {
@@ -263,11 +261,15 @@ function CreateAllocationContent() {
         payload.emp_id = formData.employee_id;
       }
 
-      const response = await fetch("/api/allocations", {
+      // Pass demand_id so the API can complete the linked task
+      if (demandId) {
+        payload.demand_id = demandId;
+      }
+
+      const response = await authenticatedFetch("/api/allocations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
@@ -291,9 +293,11 @@ function CreateAllocationContent() {
           console.log("Failed allocations:", data.errors);
         } else {
           toast.success(`${successCount} allocation(s) created successfully!`);
+          amplitude.track("allocation_created", { count: successCount, bulk: true, billability: formData.is_billable });
         }
       } else {
         toast.success("Allocation created successfully");
+        amplitude.track("allocation_created", { count: 1, bulk: false, billability: formData.is_billable });
       }
 
       router.push("/allocations");

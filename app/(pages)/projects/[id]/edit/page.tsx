@@ -53,7 +53,7 @@ function EditProjectContent() {
   const params = useParams();
   const projectId = params.id as string;
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,13 +87,11 @@ function EditProjectContent() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Fetch project details
-      const projectResponse = await fetch(
+      const projectResponse = await authenticatedFetch(
         `/api/projects?action=get&id=${projectId}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -151,8 +149,7 @@ function EditProjectContent() {
 
       // Fetch clients (only for HR)
       if (isHR) {
-        const clientsResponse = await fetch("/api/clients", {
-          headers: { Authorization: `Bearer ${token}` },
+        const clientsResponse = await authenticatedFetch("/api/clients", {
         });
 
         if (clientsResponse.ok) {
@@ -161,8 +158,7 @@ function EditProjectContent() {
         }
 
         // Fetch project managers
-        const managersResponse = await fetch("/api/employees", {
-          headers: { Authorization: `Bearer ${token}` },
+        const managersResponse = await authenticatedFetch("/api/employees", {
         });
 
         if (managersResponse.ok) {
@@ -232,7 +228,6 @@ function EditProjectContent() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Build payload based on role
       const payload: any = {
@@ -252,11 +247,10 @@ function EditProjectContent() {
         payload.started_on = formData.started_on;
       }
 
-      const response = await fetch("/api/projects", {
+      const response = await authenticatedFetch("/api/projects", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });

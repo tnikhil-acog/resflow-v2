@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Cron Job Runner Script for ResFlow Task Generation
 # This script is executed by cron inside the Docker container

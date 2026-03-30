@@ -1,13 +1,13 @@
 // POST /api/tasks/generate-weekly
 // This endpoint should be called by a cron job weekly (e.g., Monday at 9 AM)
-// Creates weekly report reminder tasks for all active employees with allocations
+// Creates weekly report reminder tasks for all active employees
 // Allowed: Internal calls only (can add API key validation)
 
 import { NextRequest } from "next/server";
 import { db, schema } from "@/lib/db";
 import { createAuditLog } from "@/lib/audit";
 import { ErrorResponses, successResponse } from "@/lib/api-helpers";
-import { eq, and, gte, lte, isNull, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,35 +35,20 @@ export async function POST(req: NextRequest) {
     startOfWeek.setDate(today.getDate() - daysFromMonday);
     const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
 
-    // Get all active employees with current allocations
-    const activeEmployeesWithAllocations = await db
-      .selectDistinct({
-        emp_id: schema.projectAllocation.emp_id,
+    // Get all active employees
+    const activeEmployees = await db
+      .select({
+        emp_id: schema.employees.id,
         full_name: schema.employees.full_name,
         employee_code: schema.employees.employee_code,
       })
-      .from(schema.projectAllocation)
-      .innerJoin(
-        schema.employees,
-        eq(schema.projectAllocation.emp_id, schema.employees.id),
-      )
-      .where(
-        and(
-          eq(schema.employees.status, "ACTIVE"),
-          // Active allocation: start_date <= today
-          lte(schema.projectAllocation.start_date, todayStr),
-          // AND (end_date IS NULL OR end_date >= today)
-          or(
-            isNull(schema.projectAllocation.end_date),
-            gte(schema.projectAllocation.end_date, todayStr),
-          ),
-        ),
-      );
+      .from(schema.employees)
+      .where(eq(schema.employees.status, "ACTIVE"));
 
     let tasksCreated = 0;
     let tasksSkipped = 0;
 
-    for (const employee of activeEmployeesWithAllocations) {
+    for (const employee of activeEmployees) {
       // Check if task already exists for this week
       const [existingTask] = await db
         .select()
@@ -109,7 +94,7 @@ export async function POST(req: NextRequest) {
         week_end: endOfWeekStr,
         tasks_created: tasksCreated,
         tasks_skipped: tasksSkipped,
-        total_employees: activeEmployeesWithAllocations.length,
+        total_employees: activeEmployees.length,
       },
     });
 
@@ -118,8 +103,8 @@ export async function POST(req: NextRequest) {
       week_end: endOfWeekStr,
       tasks_created: tasksCreated,
       tasks_skipped: tasksSkipped,
-      total_employees: activeEmployeesWithAllocations.length,
-      message: `Generated ${tasksCreated} weekly report tasks for ${activeEmployeesWithAllocations.length} active employees. ${tasksSkipped} tasks skipped (already exist).`,
+      total_employees: activeEmployees.length,
+      message: `Generated ${tasksCreated} weekly report tasks for ${activeEmployees.length} active employees. ${tasksSkipped} tasks skipped (already exist).`,
     });
   } catch (error) {
     console.error("Error generating weekly tasks:", error);

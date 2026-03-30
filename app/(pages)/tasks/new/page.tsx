@@ -41,7 +41,7 @@ export default function NewTaskPage() {
 
 function NewTaskContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -57,11 +57,9 @@ function NewTaskContent() {
 
   const fetchEmployees = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Fetch employees
-      const empResponse = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
+      const empResponse = await authenticatedFetch("/api/employees", {
       });
 
       if (empResponse.ok) {
@@ -86,12 +84,10 @@ function NewTaskContent() {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/tasks", {
+      const response = await authenticatedFetch("/api/tasks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           owner_id: ownerId,
