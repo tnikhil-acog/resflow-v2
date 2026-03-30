@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import {
   Card,
@@ -96,6 +97,7 @@ export default function AllocationDetailPage() {
 function AllocationDetailContent() {
   const router = useRouter();
   const params = useParams();
+  const { authenticatedFetch } = useAuth();
   const id = params?.id as string;
   const [allocation, setAllocation] = useState<Allocation | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -159,9 +161,7 @@ function AllocationDetailContent() {
 
   const fetchAllocation = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/allocations?action=get&id=${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/allocations?action=get&id=${id}`, {
       });
 
       if (!response.ok) {
@@ -192,9 +192,7 @@ function AllocationDetailContent() {
 
   const fetchEmployees = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/employees", {
       });
 
       if (response.ok) {
@@ -208,9 +206,7 @@ function AllocationDetailContent() {
 
   const fetchProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/projects", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/projects", {
       });
 
       if (response.ok) {
@@ -224,11 +220,9 @@ function AllocationDetailContent() {
 
   const fetchRemainingCapacity = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/allocations?action=capacity&employee_id=${formData.employee_id}&exclude_allocation_id=${id}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -299,12 +293,10 @@ function AllocationDetailContent() {
     setSaving(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/allocations", {
+      const response = await authenticatedFetch("/api/allocations", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           action: "update",
@@ -393,12 +385,10 @@ function AllocationDetailContent() {
 
     setTransferring(true);
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/allocations/transfer", {
+      const response = await authenticatedFetch("/api/allocations/transfer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           allocation_id: id,

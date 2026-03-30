@@ -56,16 +56,23 @@ export async function GET(req: NextRequest) {
         log_date: schema.dailyProjectLogs.log_date,
         employee_code: schema.employees.employee_code,
         employee_name: schema.employees.full_name,
+        employee_type: schema.employees.employee_type,
+        department: schema.departments.name,
         project_code: schema.projects.project_code,
         project_name: schema.projects.project_name,
         hours: schema.dailyProjectLogs.hours,
         notes: schema.dailyProjectLogs.notes,
+        locked: schema.dailyProjectLogs.locked,
         billability: schema.projectAllocation.billability,
       })
       .from(schema.dailyProjectLogs)
       .innerJoin(
         schema.employees,
         eq(schema.dailyProjectLogs.emp_id, schema.employees.id),
+      )
+      .leftJoin(
+        schema.departments,
+        eq(schema.employees.department_id, schema.departments.id),
       )
       .innerJoin(
         schema.projects,
@@ -93,6 +100,8 @@ export async function GET(req: NextRequest) {
         log_date: log.log_date,
         employee_code: log.employee_code,
         employee_name: log.employee_name,
+        employee_type: log.employee_type || "",
+        department: log.department || "",
         project_code: log.project_code,
         project_name: log.project_name,
         hours: log.hours,
@@ -103,6 +112,7 @@ export async function GET(req: NextRequest) {
             : log.billability === false
               ? "Non-Billable"
               : "Unknown",
+        locked: log.locked ? "Yes" : "No",
       })),
     );
 
@@ -110,11 +120,14 @@ export async function GET(req: NextRequest) {
       "log_date",
       "employee_code",
       "employee_name",
+      "employee_type",
+      "department",
       "project_code",
       "project_name",
       "hours",
       "notes",
       "billability",
+      "locked",
     ];
 
     const filename = `work_logs_${startDate}_${endDate}`;

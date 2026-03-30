@@ -51,7 +51,7 @@ export default function DemandsListPage() {
 
 function DemandsListContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [demands, setDemands] = useState<Demand[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -75,15 +75,13 @@ function DemandsListContent() {
 
   const fetchDemands = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
 
       if (projectFilter) params.append("project_id", projectFilter);
       if (statusFilter) params.append("demand_status", statusFilter);
       if (requestedByFilter) params.append("requested_by", requestedByFilter);
 
-      const response = await fetch(`/api/demands?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/demands?${params.toString()}`, {
       });
 
       if (!response.ok) {

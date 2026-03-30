@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,12 +12,7 @@ import { LogFormFields } from "@/components/forms/log-form-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon, AlertTriangleIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
-interface Project {
-  id: string;
-  project_code: string;
-  project_name: string;
-}
+import type { ProjectRef as Project } from "@/lib/types";
 
 interface LogFormData {
   project_id: string | undefined;
@@ -46,6 +42,7 @@ export default function LogDetailPage() {
   const params = useParams();
   const logId = params?.id as string;
   const { toast } = useToast();
+  const { authenticatedFetch } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -68,10 +65,8 @@ export default function LogDetailPage() {
   async function fetchLogDetail() {
     try {
       setFetching(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/logs/${logId}`, {
+      const response = await authenticatedFetch(`/api/logs/${logId}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -163,17 +158,15 @@ export default function LogDetailPage() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
       const payload = {
         hours: parseFloat(formData.hours),
         notes: formData.notes || null,
       };
 
-      const response = await fetch(`/api/logs/${logId}`, {
+      const response = await authenticatedFetch(`/api/logs/${logId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });

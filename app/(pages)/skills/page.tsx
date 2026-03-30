@@ -36,20 +36,7 @@ import { DeleteSkillDialog } from "@/components/forms/delete-skill-dialog";
 import { toast } from "sonner";
 import { Plus, Search, FileText, Pencil, Trash2 } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
-
-interface Skill {
-  id: string;
-  skill_id: string;
-  skill_name: string;
-  department_id: string;
-  department_name: string;
-  created_at: string;
-}
-
-interface Department {
-  id: string;
-  name: string;
-}
+import type { Department, Skill } from "@/lib/types";
 
 export default function SkillsPage() {
   return (
@@ -61,7 +48,7 @@ export default function SkillsPage() {
 
 function SkillsContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,9 +93,7 @@ function SkillsContent() {
 
   const fetchDepartments = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/departments", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/departments", {
       });
 
       if (response.ok) {
@@ -123,7 +108,6 @@ function SkillsContent() {
   const fetchSkills = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
 
       if (selectedDepartment)
@@ -132,8 +116,7 @@ function SkillsContent() {
       params.append("page", currentPage.toString());
       params.append("limit", pageSize.toString());
 
-      const response = await fetch(`/api/skills?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/skills?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -289,7 +272,7 @@ function SkillsContent() {
                           </TableCell>
                           <TableCell>{skill.department_name}</TableCell>
                           <TableCell>
-                            {new Date(skill.created_at).toLocaleDateString()}
+                            {skill.created_at ? new Date(skill.created_at).toLocaleDateString() : "-"}
                           </TableCell>
                           {isHR && (
                             <TableCell>

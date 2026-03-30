@@ -13,8 +13,8 @@ import {
   Shield,
   Zap,
   TrendingUp,
-  ShieldAlert,
   Download,
+  ClipboardCheck,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -50,7 +50,7 @@ const navigationItems = [
     name: "Analytics",
     href: "/analytics",
     icon: Home,
-    roles: ["employee", "project_manager", "hr_executive"],
+    roles: ["project_manager", "hr_executive"],
   },
   {
     name: "Projects",
@@ -89,16 +89,16 @@ const navigationItems = [
     roles: ["employee", "project_manager", "hr_executive"],
   },
   {
-    name: "Approvals",
-    href: "/approvals",
-    icon: ShieldAlert,
-    roles: ["hr_executive"],
-  },
-  {
     name: "Reports",
     href: "/reports",
     icon: BarChart3,
-    roles: ["project_manager", "hr_executive"],
+    roles: ["employee", "project_manager", "hr_executive"],
+  },
+  {
+    name: "Approvals",
+    href: "/approvals",
+    icon: ClipboardCheck,
+    roles: ["hr_executive"],
   },
   {
     name: "Audit",
@@ -183,6 +183,9 @@ export function ModernLayout({
               url = `/api/tasks/${entityId}`;
               nameField = "description";
               break;
+            case "logs":
+              url = `/api/logs/${entityId}`;
+              break;
             default:
               return;
           }
@@ -198,8 +201,17 @@ export function ModernLayout({
               // Extract name value based on response structure
               let nameValue = "";
 
+              // Special case for logs: combine project code and date
+              if (entityType === "logs" && data.project) {
+                const [y, mo, d] = (data.log_date || "").split("-").map(Number);
+                const dateObj = y ? new Date(y, mo - 1, d) : null;
+                const formattedDate = dateObj
+                  ? dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : "";
+                nameValue = `${data.project.project_code}${formattedDate ? " – " + formattedDate : ""}`;
+              }
               // For employees with action=get, response is direct object
-              if (entityType === "employees" && data[nameField]) {
+              else if (entityType === "employees" && data[nameField]) {
                 nameValue = data[nameField];
               }
               // For projects with action=get, response is direct object

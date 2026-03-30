@@ -24,11 +24,7 @@ import {
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { LoadingPage, LoadingSpinner } from "@/components/loading-spinner";
-
-interface Department {
-  id: string;
-  name: string;
-}
+import type { Department } from "@/lib/types";
 
 export default function NewSkillPage() {
   return (
@@ -40,7 +36,7 @@ export default function NewSkillPage() {
 
 function NewSkillContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -60,9 +56,7 @@ function NewSkillContent() {
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
-        const token = localStorage.getItem("auth_token");
-        const response = await fetch("/api/departments", {
-          headers: { Authorization: `Bearer ${token}` },
+        const response = await authenticatedFetch("/api/departments", {
         });
 
         if (response.ok) {
@@ -102,13 +96,11 @@ function NewSkillContent() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
 
-      const response = await fetch("/api/skills", {
+      const response = await authenticatedFetch("/api/skills", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           skill_name: skillName.trim(),

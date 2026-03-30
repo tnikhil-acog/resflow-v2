@@ -36,21 +36,7 @@ import { EmployeeCombobox } from "@/components/employee-combobox";
 import { toast } from "sonner";
 import { Plus, Pencil, Search, FileText } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
-
-interface Allocation {
-  id: string;
-  emp_id: string;
-  employee_code: string;
-  employee_name: string;
-  project_id: string;
-  project_code: string;
-  project_name: string;
-  allocation_percentage: number;
-  role: string;
-  is_billable: boolean;
-  start_date: string;
-  end_date?: string;
-}
+import type { Allocation } from "@/lib/types";
 
 export default function AllocationsListPage() {
   return (
@@ -62,7 +48,7 @@ export default function AllocationsListPage() {
 
 function AllocationsListContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -108,7 +94,6 @@ function AllocationsListContent() {
   const fetchAllocations = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
 
       if (projectFilter) params.append("project_id", projectFilter);
@@ -118,8 +103,7 @@ function AllocationsListContent() {
       params.append("page", currentPage.toString());
       params.append("limit", pageSize.toString());
 
-      const response = await fetch(`/api/allocations?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/allocations?${params.toString()}`, {
       });
 
       if (!response.ok) {

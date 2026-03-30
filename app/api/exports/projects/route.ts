@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { eq, and } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
 import {
   generateCSVResponse,
   generateExcelCSVResponse,
@@ -25,9 +25,12 @@ export async function GET(req: NextRequest) {
     const projectType = searchParams.get("project_type"); // client, internal
 
     // Build query conditions
-    const conditions = [];
+    const conditions: any[] = [];
     if (status === "active") {
-      conditions.push(eq(schema.projects.status, "ACTIVE"));
+      // "active" means not yet closed: DRAFT, ACTIVE, ON_HOLD
+      conditions.push(
+        notInArray(schema.projects.status, ["COMPLETED", "CANCELLED"]),
+      );
     } else if (status === "completed") {
       conditions.push(eq(schema.projects.status, "COMPLETED"));
     }
@@ -45,6 +48,7 @@ export async function GET(req: NextRequest) {
         project_code: schema.projects.project_code,
         project_name: schema.projects.project_name,
         project_type: schema.projects.project_type,
+        project_master: schema.projects.project_master,
         status: schema.projects.status,
         economic_billability: schema.projects.economic_billability,
         capacity_billability: schema.projects.capacity_billability,
@@ -53,6 +57,8 @@ export async function GET(req: NextRequest) {
         started_on: schema.projects.started_on,
         closed_on: schema.projects.closed_on,
         short_description: schema.projects.short_description,
+        github_url: schema.projects.github_url,
+        pitch_deck_url: schema.projects.pitch_deck_url,
       })
       .from(schema.projects)
       .leftJoin(
@@ -71,15 +77,18 @@ export async function GET(req: NextRequest) {
       projectData.map((proj) => ({
         project_code: proj.project_code,
         project_name: proj.project_name,
-        project_type: proj.project_type || "N/A",
+        project_type: proj.project_type || "",
+        project_master: proj.project_master || "",
         status: proj.status,
         economic_billability: proj.economic_billability ? "Yes" : "No",
         capacity_billability: proj.capacity_billability ? "Yes" : "No",
-        client: proj.client_name || "N/A",
-        project_manager: proj.pm_name || "N/A",
-        started_on: proj.started_on,
-        closed_on: proj.closed_on,
+        client: proj.client_name || "",
+        project_manager: proj.pm_name || "",
+        started_on: proj.started_on || "",
+        closed_on: proj.closed_on || "",
         description: proj.short_description || "",
+        github_url: proj.github_url || "",
+        pitch_deck_url: proj.pitch_deck_url || "",
       })),
     );
 
@@ -87,6 +96,7 @@ export async function GET(req: NextRequest) {
       "project_code",
       "project_name",
       "project_type",
+      "project_master",
       "status",
       "economic_billability",
       "capacity_billability",
@@ -95,6 +105,8 @@ export async function GET(req: NextRequest) {
       "started_on",
       "closed_on",
       "description",
+      "github_url",
+      "pitch_deck_url",
     ];
 
     // Generate filename

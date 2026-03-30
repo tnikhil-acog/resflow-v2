@@ -1,85 +1,3 @@
-/**
- * Demands API Routes
- *
- * POST /api/demands - Create new demand
- * GET /api/demands?id={id} - Get single demand by ID ✓ IMPLEMENTED
- * GET /api/demands - List demands with filters
- * PUT /api/demands - Update demand (PM: REQUESTED status only)
- *
- * Allowed Roles:
- * - POST: project_manager (own projects), hr_executive (all)
- * - GET single: project_manager (own), hr_executive (all)
- * - GET list: project_manager (own), hr_executive (all)
- * - PUT: project_manager (own, REQUESTED only)
- */
-
-// POST /api/demands/create
-// Allowed Roles: project_manager, hr_executive
-// Accept: { project_id, role_required, skill_ids: string[], start_date }
-// Validation:
-//   - project_manager: Can create WHERE project_id IN (SELECT id FROM projects WHERE project_manager_id = current_user_id), else return 403 "Access denied. Not your project"
-//   - hr_executive: Can create for any project
-//   - skill_ids must be array of valid skill IDs
-// Transaction:
-//   1. INSERT into resource_demands table with requested_by = current_user_id, demand_status = 'REQUESTED'
-//   2. For each skill_id in skill_ids: INSERT into demand_skills (demand_id, skill_id)
-// Return: { id, project_id, role_required, skill_ids, start_date, requested_by, demand_status, created_at }
-
-// GET /api/demands/list
-// Allowed Roles: project_manager, hr_executive
-// Query params: project_id, demand_status, requested_by, page, limit
-// Data Filtering:
-//   - project_manager: Returns WHERE requested_by = current_user_id
-//   - hr_executive: Returns all demands
-// SELECT * FROM resource_demands WHERE filters applied
-// JOIN projects table to get project_code, project_name
-// JOIN employees table to get requested_by_name (full_name)
-// JOIN demand_skills and skills tables to get skill names array
-//   - SELECT ds.demand_id, array_agg(s.skill_name) as skill_names FROM demand_skills ds JOIN skills s ON ds.skill_id = s.id GROUP BY ds.demand_id
-// Apply pagination using LIMIT and OFFSET
-// Return: { demands: [{ id, project_id, project_code, project_name, role_required, skill_names, start_date, requested_by, requested_by_name, demand_status, created_at }], total, page, limit }
-
-// GET /api/demands/get
-// Allowed Roles: project_manager, hr_executive
-// Query param: id (required)
-// Data Filtering:
-//   - project_manager: Can view WHERE requested_by = current_user_id, else return 403
-//   - hr_executive: Can view any demand
-// SELECT * FROM resource_demands WHERE id = ?
-// JOIN projects table to get project_code, project_name
-// JOIN employees table to get requested_by_name (full_name)
-// JOIN demand_skills and skills tables to get skill names array
-// Return: { id, project_id, project_code, project_name, role_required, skill_names, start_date, requested_by, requested_by_name, demand_status, created_at }
-// Error 403 if access denied
-// Error 404 if demand not found
-
-// PUT /api/demands/update
-// Allowed Roles: project_manager (only if demand_status = 'REQUESTED')
-// Accept: { id, role_required, skill_ids: string[], start_date }
-// Get demand: SELECT requested_by, demand_status FROM resource_demands WHERE id = ?
-// Validation:
-//   - project_manager: Can update WHERE requested_by = current_user_id AND demand_status = 'REQUESTED', else return 403 "Cannot edit demand after HR review"
-//   - demand_status must be 'REQUESTED', else return 400 "Cannot edit demand. Status: FULFILLED/CANCELLED"
-// Transaction:
-//   1. UPDATE resource_demands SET role_required = ?, start_date = ? WHERE id = ?
-//   2. DELETE FROM demand_skills WHERE demand_id = ?
-//   3. For each skill_id in skill_ids: INSERT into demand_skills (demand_id, skill_id)
-// Return: { id, role_required, skill_ids, start_date }
-// Error 403 if access denied
-
-// POST /api/demands/approve
-// Allowed Roles: hr_executive
-// Check JWT role = 'hr_executive', else return 403
-// Accept: { id, action: "approve" | "reject" }
-// Get demand: SELECT id, demand_status FROM resource_demands WHERE id = ?
-// If action = "approve":
-//   - UPDATE resource_demands SET demand_status = 'FULFILLED' WHERE id = ?
-// If action = "reject":
-//   - UPDATE resource_demands SET demand_status = 'CANCELLED' WHERE id = ?
-// INSERT audit log with operation='UPDATE', changed_by=current_user_id
-// Return: { id, demand_status }
-// Error 403 if access denied
-
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser, checkRole } from "@/lib/auth";
@@ -205,7 +123,7 @@ export async function POST(req: NextRequest) {
       .from(schema.skills)
       .where(inArray(schema.skills.skill_id, skill_ids));
 
-    const skillNamesStr = skillNames.map((s) => s.skill_name).join(", ");
+    const skillNamesStr = skillNames.map((s: { skill_name: string | null }) => s.skill_name).join(", ");
 
     // Get all HR executives to assign the task
     const hrExecutives = await db
@@ -221,7 +139,7 @@ export async function POST(req: NextRequest) {
       );
 
     // Create a task for each HR executive
-    const taskDescription = `Review resource demand: ${requesterDetails?.full_name || "PM"} (${requesterDetails?.employee_code || user.id}) requested ${role_required} for "${projectDetails?.project_name || project_id}" (Skills: ${skillNamesStr || "N/A"}) starting ${startDateStr}`;
+    const taskDescription = `Allocate resource for demand: ${role_required} needed for "${projectDetails?.project_name || project_id}" (${projectDetails?.project_code || ""}) starting ${startDateStr}. Skills required: ${skillNamesStr || "N/A"}. Requested by: ${requesterDetails?.full_name || "PM"} (${requesterDetails?.employee_code || user.id})`;
 
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days
@@ -248,7 +166,7 @@ export async function POST(req: NextRequest) {
         requested_by: result.requested_by,
         demand_status: result.demand_status,
         created_at: result.created_at,
-        message: `Demand created successfully. ${hrExecutives.length} approval task(s) created for HR.`,
+        message: `Demand created successfully. ${hrExecutives.length} allocation task(s) created for HR.`,
       },
       201,
     );
@@ -521,11 +439,11 @@ async function getDemandsList(
     .offset(offset);
 
   // Get skill names for all demands
-  const demandIds = demands.map((d) => d.id);
+  const demandIds = demands.map((d: (typeof demands)[0]) => d.id);
   const skillsMap = await getDemandSkillsMap(demandIds);
 
   // Format response
-  const formattedDemands = demands.map((d) => ({
+  const formattedDemands = demands.map((d: (typeof demands)[0]) => ({
     id: d.id,
     project_id: d.project_id,
     project_code: d.project_code,

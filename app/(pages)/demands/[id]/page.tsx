@@ -78,7 +78,7 @@ export default function DemandDetailPage() {
 function DemandDetailContent() {
   const router = useRouter();
   const params = useParams();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const id = params?.id as string;
 
   const [demand, setDemand] = useState<Demand | null>(null);
@@ -114,9 +114,7 @@ function DemandDetailContent() {
 
   const fetchDemand = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/demands?action=get&id=${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/demands?action=get&id=${id}`, {
       });
 
       if (!response.ok) {
@@ -142,9 +140,7 @@ function DemandDetailContent() {
 
   const fetchProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/projects", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/projects", {
       });
 
       if (response.ok) {
@@ -158,9 +154,7 @@ function DemandDetailContent() {
 
   const fetchSkills = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/skills", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/skills", {
       });
 
       if (response.ok) {
@@ -174,9 +168,7 @@ function DemandDetailContent() {
 
   const fetchDepartments = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/departments", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/departments", {
       });
 
       if (response.ok) {
@@ -221,12 +213,10 @@ function DemandDetailContent() {
     setSaving(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/demands", {
+      const response = await authenticatedFetch("/api/demands", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           action: "update",
@@ -265,17 +255,15 @@ function DemandDetailContent() {
     setSaving(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/demands", {
-        method: "PUT",
+      const action = newStatus === "FULFILLED" ? "approve" : "reject";
+      const response = await authenticatedFetch("/api/demands/approve", {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          action: "update_status",
           id,
-          demand_status: newStatus,
+          action,
         }),
       });
 

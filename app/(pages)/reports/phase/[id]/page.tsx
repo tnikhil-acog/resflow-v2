@@ -29,7 +29,7 @@ function PhaseReportDetail() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [report, setReport] = useState<PhaseReport | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,10 +44,8 @@ function PhaseReportDetail() {
   async function fetchPhaseReport() {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/phase-reports/${id}`, {
+      const response = await authenticatedFetch(`/api/phase-reports/${id}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
         },
       });
 
