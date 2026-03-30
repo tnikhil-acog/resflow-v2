@@ -30,14 +30,14 @@ export async function POST(req: NextRequest) {
 /**
  * Handle user login with LDAP authentication
  *
- * MOCK TESTING INSTRUCTIONS:
- * 1. Use any ldap_username that exists in your employees table
- * 2. Use password "test123" to simulate LDAP validation
- * 3. The backend will fetch user details from DB after LDAP validates
+ * LDAP AUTH NOTES:
+ * 1. Username/password are validated against LDAP.
+ * 2. Restricted test bypass is supported for admin.hr with password "test123".
+ * 3. Backend then fetches user details from DB after LDAP validates.
  *
  * Example request:
  * POST /api/auth/login
- * Body: { "ldap_username": "john.doe", "password": "test123" }
+ * Body: { "ldap_username": "john.doe", "password": "secret" }
  */
 async function handleLogin(req: NextRequest) {
   try {
@@ -62,7 +62,7 @@ async function handleLogin(req: NextRequest) {
       return ErrorResponses.badRequest("Invalid LDAP username format");
     }
 
-    // Step 1: Authenticate against LDAP (mock)
+    // Step 1: Authenticate against LDAP
     console.log(`[AUTH] Step 1: Validating with LDAP...`);
     const ldapResult = await authenticateLDAP(ldap_username, password);
 

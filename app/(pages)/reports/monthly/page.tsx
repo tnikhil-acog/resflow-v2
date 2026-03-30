@@ -62,7 +62,7 @@ interface BillingProject {
 }
 
 export default function MonthlyReportsPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, authenticatedFetch } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,13 +116,7 @@ export default function MonthlyReportsPage() {
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem("auth_token");
-      if (!token) {
-        router.push("/login");
-        return;
-      }
 
-      const headers = { Authorization: `Bearer ${token}` };
 
       // Build query params
       const params = new URLSearchParams({
@@ -139,10 +133,9 @@ export default function MonthlyReportsPage() {
 
       // Fetch both consolidated report and billing summary
       const [consolidatedRes, billingRes] = await Promise.all([
-        fetch(`/api/reports/monthly?${params.toString()}`, { headers }),
-        fetch(
+        authenticatedFetch(`/api/reports/monthly?${params.toString()}`),
+        authenticatedFetch(
           `/api/dashboard/billing/monthly?month=${selectedMonth}&year=${selectedYear}${selectedProject && selectedProject !== "ALL" ? `&project_id=${selectedProject}` : ""}`,
-          { headers },
         ),
       ]);
 

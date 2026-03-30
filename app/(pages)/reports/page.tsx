@@ -76,7 +76,7 @@ export default function ReportsPage() {
 
 function ReportsContent() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState<Report[]>([]);
   const [phaseReports, setPhaseReports] = useState<PhaseReport[]>([]);
@@ -110,10 +110,8 @@ function ReportsContent() {
 
   async function fetchEmployees() {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees", {
+      const response = await authenticatedFetch("/api/employees", {
         headers: {
-          Authorization: `Bearer ${token}`,
         },
       });
       if (response.ok) {
@@ -141,10 +139,8 @@ function ReportsContent() {
       if (startDate) params.append("start_date", startDate);
       if (endDate) params.append("end_date", endDate);
 
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/reports?${params.toString()}`, {
+      const response = await authenticatedFetch(`/api/reports?${params.toString()}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -170,14 +166,12 @@ function ReportsContent() {
     try {
       setLoading(true);
 
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
 
       // PM sees only their project's phase reports
       // HR sees all phase reports
-      const response = await fetch(`/api/phase-reports?${params.toString()}`, {
+      const response = await authenticatedFetch(`/api/phase-reports?${params.toString()}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
         },
       });
 

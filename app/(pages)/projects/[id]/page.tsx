@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -53,18 +53,7 @@ interface ProjectDetails {
   started_on: string;
   closed_on?: string;
 }
-
-interface Allocation {
-  id: string;
-  emp_id: string;
-  employee_code: string;
-  employee_name: string;
-  role: string;
-  allocation_percentage: number;
-  is_billable: boolean;
-  start_date: string;
-  end_date?: string;
-}
+import type { Allocation } from "@/lib/types";
 
 export default function ProjectDetailPage() {
   return (
@@ -78,12 +67,12 @@ function ProjectDetailContent() {
   const params = useParams();
   const projectId = params.id as string;
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [project, setProject] = useState<ProjectDetails | null>(null);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [allocationsLoading, setAllocationsLoading] = useState(true);
-  const [hasShownPermissionError, setHasShownPermissionError] = useState(false);
+  const hasShownPermissionErrorRef = useRef(false);
 
   const isHR = user?.employee_role === "hr_executive";
   const isPM = user?.employee_role === "project_manager";
@@ -97,12 +86,10 @@ function ProjectDetailContent() {
   const fetchAllocations = async () => {
     try {
       setAllocationsLoading(true);
-      const token = localStorage.getItem("auth_token");
 
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/allocations?project_id=${projectId}&limit=100`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -119,17 +106,17 @@ function ProjectDetailContent() {
 
   const fetchProjectDetails = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
 
-      const response = await fetch(`/api/projects?action=get&id=${projectId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/projects?action=get&id=${projectId}`, {
       });
 
       if (!response.ok) {
-        if (response.status === 403 && !hasShownPermissionError) {
-          setHasShownPermissionError(true);
-          toast.error("You don't have permission to view this project");
-          router.push("/projects");
+        if (response.status === 403) {
+          if (!hasShownPermissionErrorRef.current) {
+            hasShownPermissionErrorRef.current = true;
+            toast.error("You don't have permission to view this project");
+          }
+          router.replace("/projects");
           return;
         }
         throw new Error("Failed to fetch project details");

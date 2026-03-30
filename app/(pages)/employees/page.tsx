@@ -33,27 +33,9 @@ import { PaginationControls } from "@/components/pagination-controls";
 import { toast } from "sonner";
 import { Plus, Pencil, LogOut, Search, Users } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
+import type { Department, Employee } from "@/lib/types";
 
-interface Employee {
-  id: string;
-  employee_code: string;
-  full_name: string;
-  email: string;
-  employee_role: string;
-  employee_design: string;
-  department_name?: string;
-  status: string;
-  ldap_username?: string;
-  employee_type?: string;
-  working_location?: string;
-  joined_on?: string;
-  exited_on?: string;
-}
-
-interface Department {
-  id: string;
-  name: string;
-}
+const PM_TEAM_FILTER_VALUE = "__my_team__";
 
 interface Column<T> {
   key: string;
@@ -67,7 +49,7 @@ export default function EmployeesListPage() {
 
 function EmployeesListContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [projects, setProjects] = useState<
@@ -134,9 +116,7 @@ function EmployeesListContent() {
 
   const fetchActiveCount = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees?status=ACTIVE&limit=0", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/employees?status=ACTIVE&limit=0", {
       });
 
       if (response.ok) {
@@ -150,9 +130,7 @@ function EmployeesListContent() {
 
   const fetchTotalCount = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees?limit=0", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/employees?limit=0", {
       });
 
       if (response.ok) {
@@ -166,9 +144,7 @@ function EmployeesListContent() {
 
   const fetchDepartments = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/departments", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/departments", {
       });
 
       if (response.ok) {
@@ -182,11 +158,9 @@ function EmployeesListContent() {
 
   const fetchPMProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/projects?project_manager_id=${user?.id}&limit=1000`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -202,14 +176,12 @@ function EmployeesListContent() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
 
-      // If project filter is active, fetch employees via allocations
-      if (projectFilter && isPM) {
-        const allocResponse = await fetch(
+      // For PMs, project filter applies only when a concrete project is selected.
+      if (projectFilter && isPM && projectFilter !== PM_TEAM_FILTER_VALUE) {
+        const allocResponse = await authenticatedFetch(
           `/api/allocations?project_id=${projectFilter}&limit=1000`,
           {
-            headers: { Authorization: `Bearer ${token}` },
           },
         );
 
@@ -224,19 +196,39 @@ function EmployeesListContent() {
 
           // Fetch employee details for these IDs
           if (employeeIds.length > 0) {
-            const empPromises = employeeIds.map((id) =>
-              fetch(`/api/employees?action=get&id=${id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              }).then((r) => r.json()),
+            const employeeResponses = await Promise.all(
+              employeeIds.map((id) =>
+                authenticatedFetch(`/api/employees?action=get&id=${id}`, {}),
+              ),
             );
 
-            const employeesData = await Promise.all(empPromises);
-            let filteredEmps = employeesData.filter((emp) => emp && emp.id);
+            const employeesData = await Promise.all(
+              employeeResponses.map(async (response) => {
+                if (!response.ok) {
+                  return null;
+                }
+                return response.json();
+              }),
+            );
+
+            let filteredEmps = employeesData.filter(
+              (emp): emp is Employee => Boolean(emp && emp.id),
+            );
 
             // Apply additional filters
             if (statusFilter) {
               filteredEmps = filteredEmps.filter(
                 (e) => e.status === statusFilter,
+              );
+            }
+            if (departmentFilter) {
+              filteredEmps = filteredEmps.filter(
+                (e) => e.department_id === departmentFilter,
+              );
+            }
+            if (roleFilter) {
+              filteredEmps = filteredEmps.filter(
+                (e) => e.employee_role === roleFilter,
               );
             }
             if (searchQuery) {
@@ -264,11 +256,13 @@ function EmployeesListContent() {
         if (departmentFilter) params.append("department_id", departmentFilter);
         if (roleFilter) params.append("role", roleFilter);
         if (searchQuery) params.append("search", searchQuery);
+        if (isPM && projectFilter === PM_TEAM_FILTER_VALUE) {
+          params.append("pm_scope", "my_team");
+        }
         params.append("page", currentPage.toString());
         params.append("limit", pageSize.toString());
 
-        const response = await fetch(`/api/employees?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const response = await authenticatedFetch(`/api/employees?${params.toString()}`, {
         });
 
         if (!response.ok) {
@@ -311,12 +305,8 @@ function EmployeesListContent() {
   };
 
   const handleRowClick = (employee: Employee) => {
-    // If employee role, redirect to their own profile
-    if (isEmployee) {
-      router.push(`/employees/${user?.id}`);
-    } else {
-      router.push(`/employees/${employee.id}`);
-    }
+    // Route to selected employee detail; detail page handles permission checks.
+    router.push(`/employees/${employee.id}`);
   };
 
   const handleEdit = (employee: Employee) => {
@@ -577,19 +567,20 @@ function EmployeesListContent() {
             </div>
 
             {isPM && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Project</label>
+              <div className="space-y-2 min-w-0">
+                <label className="text-sm font-medium">Project Scope</label>
                 <Select
                   value={projectFilter || "all"}
                   onValueChange={(value) =>
                     setProjectFilter(value === "all" ? undefined : value)
                   }
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All employees" />
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="All Employees" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Employees</SelectItem>
+                    <SelectItem value={PM_TEAM_FILTER_VALUE}>My Team</SelectItem>
                     {projects.map((proj) => (
                       <SelectItem key={proj.id} value={proj.id}>
                         {proj.project_name}

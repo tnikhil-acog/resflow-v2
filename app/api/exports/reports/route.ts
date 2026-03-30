@@ -48,11 +48,14 @@ export async function GET(req: NextRequest) {
     // Fetch reports with employee details
     const reports = await db
       .select({
+        report_date: schema.reports.report_date,
         week_start: schema.reports.week_start_date,
         week_end: schema.reports.week_end_date,
         employee_code: schema.employees.employee_code,
         employee_name: schema.employees.full_name,
+        department: schema.departments.name,
         report_type: schema.reports.report_type,
+        content: schema.reports.content,
         weekly_hours: schema.reports.weekly_hours,
         created_at: schema.reports.created_at,
       })
@@ -60,6 +63,10 @@ export async function GET(req: NextRequest) {
       .innerJoin(
         schema.employees,
         eq(schema.reports.emp_id, schema.employees.id),
+      )
+      .leftJoin(
+        schema.departments,
+        eq(schema.employees.department_id, schema.departments.id),
       )
       .where(and(...whereConditions))
       .orderBy(schema.reports.week_start_date, schema.employees.employee_code);
@@ -69,35 +76,45 @@ export async function GET(req: NextRequest) {
       reports.map((report) => {
         let totalHours = 0;
         if (report.weekly_hours && typeof report.weekly_hours === "object") {
-          // Sum up hours from the weekly_hours JSON structure
           const hoursData = report.weekly_hours as any;
           if (Array.isArray(hoursData)) {
             totalHours = hoursData.reduce(
-              (sum, day) => sum + (parseFloat(day.hours) || 0),
+              (sum: number, day: any) => sum + (parseFloat(day.hours) || 0),
               0,
             );
           }
         }
 
+        // Truncate content to 500 chars for CSV readability
+        const contentText = report.content
+          ? report.content.replace(/\n/g, " ").substring(0, 500)
+          : "";
+
         return {
+          report_date: report.report_date || "",
           week_start: report.week_start,
           week_end: report.week_end,
           employee_code: report.employee_code,
           employee_name: report.employee_name,
+          department: report.department || "",
           report_type: report.report_type,
           total_hours: totalHours.toFixed(2),
+          content: contentText,
           created_at: report.created_at,
         };
       }),
     );
 
     const headers = [
+      "report_date",
       "week_start",
       "week_end",
       "employee_code",
       "employee_name",
+      "department",
       "report_type",
       "total_hours",
+      "content",
       "created_at",
     ];
 

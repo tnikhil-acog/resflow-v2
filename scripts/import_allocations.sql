@@ -44,12 +44,11 @@ SELECT
   -- "100.0%" -> 100.0
   REPLACE(s.allocation_percent, '%', '')::decimal,
 
-  -- "16-Sep-2025"
-  to_date(s.allocated_date, 'DD-Mon-YYYY'),
+  -- Period (2025-09) is the allocation start month -> first day of that month
+  date_trunc('month', (trim(s.period) || '-01')::date)::date,
 
-  -- convert Period (2025-09) -> end of month
-  (date_trunc('month', (s.period || '-01')::date)
-     + interval '1 month - 1 day')::date,
+  -- end_date is not provided in the CSV; leave as NULL (ongoing allocation)
+  NULL,
 
   s.utilization,
 

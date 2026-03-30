@@ -30,7 +30,7 @@ interface Department {
 interface Skill {
   skill_id: string;
   skill_name: string;
-  department_id: string;
+  department_id?: string;
   department_name?: string;
 }
 
@@ -58,7 +58,7 @@ export function EditSkillModal({
   useEffect(() => {
     if (open && skill) {
       setSkillName(skill.skill_name);
-      setDepartmentId(skill.department_id);
+      setDepartmentId(skill.department_id ?? "");
       setError("");
     } else {
       setSkillName("");

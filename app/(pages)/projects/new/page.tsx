@@ -49,7 +49,7 @@ export default function NewProjectPage() {
 
 function NewProjectContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,11 +82,9 @@ function NewProjectContent() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Fetch clients
-      const clientsResponse = await fetch("/api/clients", {
-        headers: { Authorization: `Bearer ${token}` },
+      const clientsResponse = await authenticatedFetch("/api/clients", {
       });
 
       if (clientsResponse.ok) {
@@ -96,10 +94,9 @@ function NewProjectContent() {
 
       // Fetch project managers - use role filter and high limit
       // Note: Database enum uses "PM" not "project_manager"
-      const empResponse = await fetch(
+      const empResponse = await authenticatedFetch(
         "/api/employees?role=PM&limit=999&status=ACTIVE",
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -167,7 +164,6 @@ function NewProjectContent() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Extract project type from first letter of project code (in uppercase)
       const projectType = formData.project_code.trim().charAt(0).toUpperCase();
@@ -198,11 +194,10 @@ function NewProjectContent() {
 
       console.log("Create Project Payload:", payload);
 
-      const response = await fetch("/api/projects", {
+      const response = await authenticatedFetch("/api/projects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });

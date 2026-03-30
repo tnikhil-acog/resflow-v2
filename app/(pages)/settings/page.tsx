@@ -71,29 +71,7 @@ interface UserProfile {
   joined_on: string;
   exited_on: string | null;
 }
-
-interface Allocation {
-  id: string;
-  project_id: string;
-  project_code: string;
-  project_name: string;
-  role: string;
-  allocation_percentage: number;
-  is_billable: boolean;
-  start_date: string;
-  end_date?: string;
-  status: string;
-}
-
-interface Skill {
-  id: string;
-  skill_id: string;
-  skill_name: string;
-  department_name: string;
-  proficiency_level: string;
-  status: string;
-  approved_at?: string;
-}
+import type { Allocation, EmployeeSkill as Skill } from "@/lib/types";
 
 export default function ProfilePage() {
   return (
@@ -105,7 +83,7 @@ export default function ProfilePage() {
 
 function ProfileContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -131,18 +109,12 @@ function ProfileContent() {
 
   const fetchProfile = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       setLoading(true);
       setError("");
 
-      if (!token) {
-        setError("Not authenticated");
-        return;
-      }
 
-      const response = await fetch("/api/auth/me", {
+      const response = await authenticatedFetch("/api/auth/me", {
         headers: {
-          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -169,12 +141,10 @@ function ProfileContent() {
   const fetchAllocations = async () => {
     try {
       setAllocationsLoading(true);
-      const token = localStorage.getItem("auth_token");
 
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/allocations?employee_id=${user?.id}&limit=100`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
 
@@ -192,10 +162,8 @@ function ProfileContent() {
   const fetchSkills = async () => {
     try {
       setSkillsLoading(true);
-      const token = localStorage.getItem("auth_token");
 
-      const response = await fetch(`/api/employee-skills?emp_id=${user?.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/employee-skills?emp_id=${user?.id}`, {
       });
 
       if (response.ok) {
@@ -213,16 +181,10 @@ function ProfileContent() {
     setError("");
 
     try {
-      const token = localStorage.getItem("auth_token");
-      if (!token) {
-        setError("Not authenticated");
-        return;
-      }
 
-      const response = await fetch("/api/employees", {
+      const response = await authenticatedFetch("/api/employees", {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

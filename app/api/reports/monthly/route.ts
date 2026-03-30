@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ErrorResponses, successResponse } from "@/lib/api-helpers";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { getPMVisibleEmployeeIds } from "@/lib/db-helpers";
 import {
   getCurrentMonthYear,
   isValidMonth,
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
       sql`EXTRACT(YEAR FROM ${schema.dailyProjectLogs.log_date}) = ${year}`,
     ];
 
-    // If PM, filter to only their projects
+    // If PM, filter to only their projects; fall back to employee filter for reporting-only PMs
     if (user.employee_role === "project_manager") {
       const pmProjects = await db
         .select({ id: schema.projects.id })
@@ -63,15 +64,19 @@ export async function GET(req: NextRequest) {
 
       const projectIds = pmProjects.map((p) => p.id);
       if (projectIds.length === 0) {
-        return successResponse({
-          month,
-          year,
-          records: [],
-        });
+        // No projects — fall back to filtering by direct reports
+        const visibleEmpIds = await getPMVisibleEmployeeIds(user.id);
+        if (visibleEmpIds.length === 0) {
+          return successResponse({ month, year, records: [] });
+        }
+        whereConditions.push(
+          inArray(schema.dailyProjectLogs.emp_id, visibleEmpIds),
+        );
+      } else {
+        whereConditions.push(
+          inArray(schema.dailyProjectLogs.project_id, projectIds),
+        );
       }
-      whereConditions.push(
-        inArray(schema.dailyProjectLogs.project_id, projectIds),
-      );
     }
 
     // Apply optional filters

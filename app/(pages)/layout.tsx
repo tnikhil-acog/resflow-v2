@@ -1,5 +1,6 @@
 import { ModernLayout } from "@/components/modern-layout";
 import { ProtectedRoute } from "@/components/protected-route";
+import { AmplitudeProvider } from "@/components/amplitude-provider";
 
 export default function DashboardLayout({
   children,
@@ -8,9 +9,11 @@ export default function DashboardLayout({
 }) {
   return (
     <ProtectedRoute>
-      <ModernLayout>
-        {children}
-      </ModernLayout>
+      <AmplitudeProvider>
+        <ModernLayout>
+          {children}
+        </ModernLayout>
+      </AmplitudeProvider>
     </ProtectedRoute>
   );
 }

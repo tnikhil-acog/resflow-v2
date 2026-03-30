@@ -61,7 +61,7 @@ interface WeeklyData {
 }
 
 export default function TeamProductivityPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, authenticatedFetch } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,21 +106,14 @@ export default function TeamProductivityPage() {
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem("auth_token");
-      if (!token) {
-        router.push("/login");
-        return;
-      }
 
-      const headers = { Authorization: `Bearer ${token}` };
       const params = new URLSearchParams({
         start_date: startDate,
         end_date: endDate,
       });
 
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/dashboard/team/productivity?${params.toString()}`,
-        { headers },
       );
 
       if (response.ok) {

@@ -13,11 +13,16 @@ export function ProtectedRoute({
   children,
   requiredRoles = [],
 }: ProtectedRouteProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
+    // Wait until auth state is restored from storage before redirect checks.
+    if (isLoading) {
+      return;
+    }
+
     if (!isAuthenticated) {
       // Redirect to login if not authenticated
       router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
@@ -29,7 +34,11 @@ export function ProtectedRoute({
         router.push("/analytics");
       }
     }
-  }, [isAuthenticated, user, router, pathname, requiredRoles]);
+  }, [isAuthenticated, isLoading, user, router, pathname, requiredRoles]);
+
+  if (isLoading) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return null;

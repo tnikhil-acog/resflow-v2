@@ -91,7 +91,7 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsPage() {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, authenticatedFetch } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,19 +158,37 @@ export default function AnalyticsPage() {
     capacityUtilization: number;
   } | null>(null);
 
+  // PM-specific analytics
+  const [pmProjectHours, setPmProjectHours] = useState<
+    Array<{ project_code: string; project_name: string; hours: number }>
+  >([]);
+  const [pmTeamHours, setPmTeamHours] = useState<
+    Array<{ emp_id: string; name: string; hours: number }>
+  >([]);
+  const [pmWeek, setPmWeek] = useState<{ start: string; end: string } | null>(
+    null,
+  );
+
   // Track expanded project types
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set(),
   );
 
-  // Check access - all authenticated users allowed
+  // Check access - HR and PM only
   useEffect(() => {
     if (authLoading) return;
 
     if (!user) {
       router.push("/login");
       return;
+    }
+
+    if (
+      user.employee_role !== "hr_executive" &&
+      user.employee_role !== "project_manager"
+    ) {
+      router.push("/tasks");
     }
   }, [user, authLoading, router]);
 
@@ -188,13 +206,10 @@ export default function AnalyticsPage() {
 
     const loadFilterOptions = async () => {
       try {
-        const token = localStorage.getItem("auth_token");
-        if (!token) return;
 
-        const headers = { Authorization: `Bearer ${token}` };
 
         // Fetch departments
-        const deptRes = await fetch("/api/departments", { headers });
+        const deptRes = await authenticatedFetch("/api/departments");
         if (deptRes.ok) {
           const deptData = await deptRes.json();
           setDepartments(
@@ -220,13 +235,7 @@ export default function AnalyticsPage() {
         setLoading(true);
         setError(null);
 
-        const token = localStorage.getItem("auth_token");
-        if (!token) {
-          router.push("/login");
-          return;
-        }
 
-        const headers = { Authorization: `Bearer ${token}` };
 
         // Build filter params
         const filterParams = new URLSearchParams();
@@ -250,13 +259,11 @@ export default function AnalyticsPage() {
         // Fetch all analytics data in parallel
         const promises: Promise<any>[] = [
           // Always fetch dashboard metrics
-          fetch("/api/dashboard/metrics", { headers }).then((r) =>
+          authenticatedFetch("/api/dashboard/metrics").then((r) =>
             r.ok ? r.json() : null,
           ),
           // Fetch billable hours with filters
-          fetch(`/api/dashboard/hours/billable${filterQuery}`, {
-            headers,
-          }).then((r) => (r.ok ? r.json() : null)),
+          authenticatedFetch(`/api/dashboard/hours/billable${filterQuery}`).then((r) => (r.ok ? r.json() : null)),
         ];
 
         // Add role-specific endpoints
@@ -265,7 +272,7 @@ export default function AnalyticsPage() {
           user?.employee_role === "project_manager"
         ) {
           promises.push(
-            fetch("/api/dashboard/projects/classification", { headers }).then(
+            authenticatedFetch("/api/dashboard/projects/classification").then(
               (r) => (r.ok ? r.json() : null),
             ),
           );
@@ -287,9 +294,7 @@ export default function AnalyticsPage() {
           }
 
           promises.push(
-            fetch(`/api/employees/${empIdToFetch}/billability`, {
-              headers,
-            }).then((r) => (r.ok ? r.json() : null)),
+            authenticatedFetch(`/api/employees/${empIdToFetch}/billability`).then((r) => (r.ok ? r.json() : null)),
           );
         }
 
@@ -316,12 +321,7 @@ export default function AnalyticsPage() {
       }
     };
 
-    const token = localStorage.getItem("auth_token");
-    if (token) {
-      fetchAnalyticsData();
-    } else {
-      router.push("/login");
-    }
+    fetchAnalyticsData();
   }, [
     router,
     authLoading,
@@ -340,55 +340,64 @@ export default function AnalyticsPage() {
 
     const fetchChartData = async () => {
       try {
-        const token = localStorage.getItem("auth_token");
-        if (!token) return;
+        if (user.employee_role === "hr_executive") {
+          // HR sees org-wide charts
+          const [
+            deptCountRes,
+            projectEmpCountRes,
+            empAllocByTypeRes,
+            allocByTypeRes,
+            economicUtilRes,
+            capacityUtilRes,
+          ] = await Promise.all([
+            authenticatedFetch("/api/analytics/department-count"),
+            authenticatedFetch("/api/analytics/project-employee-count"),
+            authenticatedFetch("/api/analytics/employee-allocation-by-type"),
+            authenticatedFetch("/api/analytics/allocation-by-project-type"),
+            authenticatedFetch("/api/analytics/economic-utilization"),
+            authenticatedFetch("/api/analytics/capacity-utilization"),
+          ]);
 
-        const headers = { Authorization: `Bearer ${token}` };
+          if (deptCountRes.ok) {
+            const data = await deptCountRes.json();
+            setDepartmentCountData(data.data || []);
+          }
+          if (projectEmpCountRes.ok) {
+            const data = await projectEmpCountRes.json();
+            setProjectEmployeeCountData(data.data || []);
+          }
+          if (empAllocByTypeRes.ok) {
+            const data = await empAllocByTypeRes.json();
+            setEmployeeAllocationByType(data.data || []);
+          }
+          if (allocByTypeRes.ok) {
+            const data = await allocByTypeRes.json();
+            setAllocationByTypeData(data.data || []);
+          }
+          if (economicUtilRes.ok) {
+            const data = await economicUtilRes.json();
+            setEconomicUtilization(data);
+          }
+          if (capacityUtilRes.ok) {
+            const data = await capacityUtilRes.json();
+            setCapacityUtilization(data);
+          }
+        } else if (user.employee_role === "project_manager") {
+          // PM sees project-scoped charts
+          const [pmProjectRes, pmTeamRes] = await Promise.all([
+            authenticatedFetch("/api/analytics/pm-project-hours"),
+            authenticatedFetch("/api/analytics/pm-team-hours"),
+          ]);
 
-        const [
-          deptCountRes,
-          projectEmpCountRes,
-          empAllocByTypeRes,
-          allocByTypeRes,
-          economicUtilRes,
-          capacityUtilRes,
-        ] = await Promise.all([
-          fetch("/api/analytics/department-count", { headers }),
-          fetch("/api/analytics/project-employee-count", { headers }),
-          fetch("/api/analytics/employee-allocation-by-type", { headers }),
-          fetch("/api/analytics/allocation-by-project-type", { headers }),
-          fetch("/api/analytics/economic-utilization", { headers }),
-          fetch("/api/analytics/capacity-utilization", { headers }),
-        ]);
-
-        if (deptCountRes.ok) {
-          const data = await deptCountRes.json();
-          setDepartmentCountData(data.data || []);
-        }
-
-        if (projectEmpCountRes.ok) {
-          const data = await projectEmpCountRes.json();
-          setProjectEmployeeCountData(data.data || []);
-        }
-
-        if (empAllocByTypeRes.ok) {
-          const data = await empAllocByTypeRes.json();
-          setEmployeeAllocationByType(data.data || []);
-        }
-
-        if (allocByTypeRes.ok) {
-          const data = await allocByTypeRes.json();
-          setAllocationByTypeData(data.data || []);
-        }
-
-        if (economicUtilRes.ok) {
-          const data = await economicUtilRes.json();
-          setEconomicUtilization(data);
-        }
-
-        if (capacityUtilRes.ok) {
-          const data = await capacityUtilRes.json();
-          setCapacityUtilization(data);
+          if (pmProjectRes.ok) {
+            const data = await pmProjectRes.json();
+            setPmProjectHours(data.data || []);
+            if (data.week) setPmWeek(data.week);
+          }
+          if (pmTeamRes.ok) {
+            const data = await pmTeamRes.json();
+            setPmTeamHours(data.data || []);
+          }
         }
       } catch (error) {
         console.error("Error fetching chart data:", error);
@@ -675,8 +684,8 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Project Classification - HR/PM Only */}
-          {(userRole === "hr_executive" || userRole === "project_manager") &&
+          {/* Project Classification - HR Only */}
+          {userRole === "hr_executive" &&
             projectData && (
               <div>
                 <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
@@ -1085,14 +1094,8 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Analytics Components - HR/PM Only 
-              1. Employee Count by Department (Bar Chart)
-              2. Employee Count by Project (Bar Chart)
-              3. Employee Allocation by Project Type (Expandable List with %)
-              4. Economic Utilization (% of billable employees)
-              5. Capacity Utilization (% of utilized allocation)
-          */}
-          {(userRole === "hr_executive" || userRole === "project_manager") && (
+          {/* Analytics Components - HR Only */}
+          {userRole === "hr_executive" && (
             <>
               {/* Department Employee Count Chart */}
               <div>
@@ -1240,7 +1243,7 @@ export default function AnalyticsPage() {
                           Type / Project / Employee
                         </div>
                         <div className="text-right">Description</div>
-                        <div className="text-right">% Allocation</div>
+                        <div className="text-right">Avg Allocation %</div>
                       </div>
 
                       {/* Expandable Rows */}
@@ -1276,7 +1279,7 @@ export default function AnalyticsPage() {
                               {typeData.employeeCount} employees
                             </div>
                             <div className="text-right font-semibold">
-                              {typeData.totalAllocation.toFixed(2)}%
+                              {typeData.employeeCount > 0 ? (typeData.totalAllocation / typeData.employeeCount).toFixed(2) : "0.00"}%
                             </div>
                           </div>
 
@@ -1315,7 +1318,7 @@ export default function AnalyticsPage() {
                                         {project.project_name}
                                       </div>
                                       <div className="text-right font-medium">
-                                        {project.totalAllocation.toFixed(2)}%
+                                        {project.employeeCount > 0 ? (project.totalAllocation / project.employeeCount).toFixed(2) : "0.00"}%
                                       </div>
                                     </div>
 
@@ -1514,6 +1517,209 @@ export default function AnalyticsPage() {
                     ) : (
                       <div className="text-center py-8 text-gray-500">
                         Loading capacity utilization data...
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+
+          {/* Analytics Components - PM Only */}
+          {userRole === "project_manager" && (
+            <>
+              {/* Hours logged per project this week */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <BarChart3 className="h-6 w-6 text-primary" />
+                  Hours per Project — This Week
+                  {pmWeek && (
+                    <span className="text-base font-normal text-muted-foreground ml-2">
+                      (
+                      {new Date(
+                        pmWeek.start + "T00:00:00",
+                      ).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}{" "}
+                      –{" "}
+                      {new Date(
+                        pmWeek.end + "T00:00:00",
+                      ).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                      )
+                    </span>
+                  )}
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    {pmProjectHours.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={350}>
+                        <BarChart
+                          data={pmProjectHours}
+                          margin={{ top: 5, right: 20, left: 0, bottom: 80 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="project_code"
+                            angle={-40}
+                            textAnchor="end"
+                            height={90}
+                            interval={0}
+                            style={{ fontSize: "12px" }}
+                          />
+                          <YAxis
+                            label={{
+                              value: "Hours",
+                              angle: -90,
+                              position: "insideLeft",
+                              offset: 10,
+                            }}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const d = payload[0].payload;
+                                return (
+                                  <div className="bg-white p-3 border border-gray-200 rounded shadow-lg">
+                                    <p className="font-semibold">
+                                      {d.project_code}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      {d.project_name}
+                                    </p>
+                                    <p className="text-sm font-semibold text-primary">
+                                      {d.hours.toFixed(1)} hrs
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="hours" name="Hours Logged" fill="#6366f1">
+                            {pmProjectHours.map((_, index) => {
+                              const colors = [
+                                "#6366f1",
+                                "#8b5cf6",
+                                "#06b6d4",
+                                "#10b981",
+                                "#f97316",
+                                "#ec4899",
+                                "#3b82f6",
+                                "#eab308",
+                              ];
+                              return (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={colors[index % colors.length]}
+                                />
+                              );
+                            })}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <Clock className="h-10 w-10 mb-3 opacity-40" />
+                        <p className="text-sm">
+                          No hours logged on your projects this week yet.
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Team member hours this week */}
+              <div>
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <Users className="h-6 w-6 text-primary" />
+                  Team Member Hours — This Week
+                  {pmWeek && (
+                    <span className="text-base font-normal text-muted-foreground ml-2">
+                      (
+                      {new Date(
+                        pmWeek.start + "T00:00:00",
+                      ).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}{" "}
+                      –{" "}
+                      {new Date(
+                        pmWeek.end + "T00:00:00",
+                      ).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                      )
+                    </span>
+                  )}
+                </h2>
+                <Card className="border-none shadow-lg">
+                  <CardContent className="pt-6">
+                    {pmTeamHours.length > 0 ? (
+                      <>
+                        <ResponsiveContainer width="100%" height={350}>
+                          <BarChart
+                            data={pmTeamHours}
+                            margin={{ top: 5, right: 20, left: 0, bottom: 80 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              dataKey="name"
+                              angle={-40}
+                              textAnchor="end"
+                              height={90}
+                              interval={0}
+                              style={{ fontSize: "12px" }}
+                            />
+                            <YAxis
+                              label={{
+                                value: "Hours",
+                                angle: -90,
+                                position: "insideLeft",
+                                offset: 10,
+                              }}
+                            />
+                            <Tooltip
+                              formatter={(value: number) => [
+                                `${value.toFixed(1)} hrs`,
+                                "Hours Logged",
+                              ]}
+                            />
+                            <Bar dataKey="hours" name="Hours Logged" fill="#10b981">
+                              {pmTeamHours.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={
+                                    entry.hours === 0 ? "#ef4444" : "#10b981"
+                                  }
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                        {pmTeamHours.some((m) => m.hours === 0) && (
+                          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                            <span className="font-semibold">
+                              {pmTeamHours.filter((m) => m.hours === 0).length}{" "}
+                              team member
+                              {pmTeamHours.filter((m) => m.hours === 0)
+                                .length !== 1
+                                ? "s have"
+                                : " has"}{" "}
+                            </span>
+                            not logged any hours this week (shown in red).
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <Users className="h-10 w-10 mb-3 opacity-40" />
+                        <p className="text-sm">No team members found.</p>
                       </div>
                     )}
                   </CardContent>

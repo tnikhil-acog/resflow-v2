@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import amplitude, { Identify, initAmplitude } from "@/lib/amplitude";
 
 interface User {
   id: string;
@@ -17,7 +18,7 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (token: string, userData: User) => void;
+  login: (token: string, userData: User, authMethod?: "ldap" | "google") => void;
   logout: () => void;
   hasRole: (roles: string[]) => boolean;
   authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
@@ -50,18 +51,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = (token: string, userData: User) => {
+  const login = (token: string, userData: User, authMethod: "ldap" | "google" = "ldap") => {
     localStorage.setItem("auth_token", token);
     localStorage.setItem("user_info", JSON.stringify(userData));
+    localStorage.setItem("auth_method", authMethod);
     setUser(userData);
     setIsAuthenticated(true);
+    initAmplitude();
+    amplitude.setUserId(userData.employee_code);
+    amplitude.identify(new Identify()
+      .set("role", userData.employee_role)
+      .set("name", userData.full_name ?? ""));
+    amplitude.track("login", { method: authMethod });
   };
 
   const logout = () => {
+    amplitude.track("logout");
+    amplitude.reset();
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user_info");
+    localStorage.removeItem("auth_method");
     setUser(null);
     setIsAuthenticated(false);
+    router.push("/login");
   };
 
   const hasRole = (roles: string[]): boolean => {

@@ -10,7 +10,172 @@ import {
   getPaginationParams,
   buildAuditFilters,
 } from "@/lib/api-helpers";
-import { eq, and, desc, sql, gte, lt } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lt, inArray } from "drizzle-orm";
+
+/**
+ * Resolve a human-readable label for each audit log entry based on entity_type + entity_id.
+ * Results are keyed by entity_id UUID.
+ */
+async function resolveEntityLabels(
+  audits: Array<{ entity_type: string; entity_id: string }>,
+): Promise<Record<string, string>> {
+  const byType = new Map<string, string[]>();
+  for (const a of audits) {
+    if (!byType.has(a.entity_type)) byType.set(a.entity_type, []);
+    byType.get(a.entity_type)!.push(a.entity_id);
+  }
+
+  const result: Record<string, string> = {};
+
+  for (const [entityType, ids] of byType) {
+    const uniqueIds = [...new Set(ids)];
+    switch (entityType) {
+      case "EMPLOYEE": {
+        const rows = await db
+          .select({ id: schema.employees.id, full_name: schema.employees.full_name, employee_code: schema.employees.employee_code })
+          .from(schema.employees)
+          .where(inArray(schema.employees.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.full_name} (${r.employee_code})`;
+        break;
+      }
+      case "DEPARTMENT": {
+        const rows = await db
+          .select({ id: schema.departments.id, name: schema.departments.name })
+          .from(schema.departments)
+          .where(inArray(schema.departments.id, uniqueIds));
+        for (const r of rows) result[r.id] = r.name;
+        break;
+      }
+      case "CLIENT": {
+        const rows = await db
+          .select({ id: schema.clients.id, client_name: schema.clients.client_name })
+          .from(schema.clients)
+          .where(inArray(schema.clients.id, uniqueIds));
+        for (const r of rows) result[r.id] = r.client_name;
+        break;
+      }
+      case "PROJECT": {
+        const rows = await db
+          .select({ id: schema.projects.id, project_name: schema.projects.project_name, project_code: schema.projects.project_code })
+          .from(schema.projects)
+          .where(inArray(schema.projects.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.project_name} (${r.project_code})`;
+        break;
+      }
+      case "PROJECT_ALLOCATION": {
+        const rows = await db
+          .select({
+            id: schema.projectAllocation.id,
+            emp_name: schema.employees.full_name,
+            project_name: schema.projects.project_name,
+            project_code: schema.projects.project_code,
+          })
+          .from(schema.projectAllocation)
+          .innerJoin(schema.employees, eq(schema.projectAllocation.emp_id, schema.employees.id))
+          .innerJoin(schema.projects, eq(schema.projectAllocation.project_id, schema.projects.id))
+          .where(inArray(schema.projectAllocation.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.emp_name} → ${r.project_name} (${r.project_code})`;
+        break;
+      }
+      case "SKILL": {
+        const rows = await db
+          .select({ id: schema.skills.skill_id, skill_name: schema.skills.skill_name })
+          .from(schema.skills)
+          .where(inArray(schema.skills.skill_id, uniqueIds));
+        for (const r of rows) result[r.id] = r.skill_name;
+        break;
+      }
+      case "EMPLOYEE_SKILL": {
+        const rows = await db
+          .select({
+            id: schema.employeeSkills.id,
+            emp_name: schema.employees.full_name,
+            skill_name: schema.skills.skill_name,
+          })
+          .from(schema.employeeSkills)
+          .innerJoin(schema.employees, eq(schema.employeeSkills.emp_id, schema.employees.id))
+          .innerJoin(schema.skills, eq(schema.employeeSkills.skill_id, schema.skills.skill_id))
+          .where(inArray(schema.employeeSkills.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.emp_name}: ${r.skill_name}`;
+        break;
+      }
+      case "DEMAND": {
+        const rows = await db
+          .select({
+            id: schema.resourceDemands.id,
+            role_required: schema.resourceDemands.role_required,
+            project_name: schema.projects.project_name,
+            project_code: schema.projects.project_code,
+          })
+          .from(schema.resourceDemands)
+          .innerJoin(schema.projects, eq(schema.resourceDemands.project_id, schema.projects.id))
+          .where(inArray(schema.resourceDemands.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.role_required} for ${r.project_name} (${r.project_code})`;
+        break;
+      }
+      case "TASK": {
+        const rows = await db
+          .select({ id: schema.tasks.id, description: schema.tasks.description, entity_type: schema.tasks.entity_type })
+          .from(schema.tasks)
+          .where(inArray(schema.tasks.id, uniqueIds));
+        for (const r of rows) {
+          const desc = r.description ?? "";
+          result[r.id] = desc.length > 60 ? desc.slice(0, 60) + "…" : desc || `${r.entity_type ?? ""} Task`;
+        }
+        break;
+      }
+      case "REPORT": {
+        const rows = await db
+          .select({
+            id: schema.reports.id,
+            report_type: schema.reports.report_type,
+            emp_name: schema.employees.full_name,
+            week_start_date: schema.reports.week_start_date,
+            report_date: schema.reports.report_date,
+          })
+          .from(schema.reports)
+          .innerJoin(schema.employees, eq(schema.reports.emp_id, schema.employees.id))
+          .where(inArray(schema.reports.id, uniqueIds));
+        for (const r of rows) {
+          const date = r.week_start_date || r.report_date || "";
+          result[r.id] = `${r.report_type} report — ${r.emp_name}${date ? ` (${date})` : ""}`;
+        }
+        break;
+      }
+      case "DAILY_PROJECT_LOG": {
+        const rows = await db
+          .select({
+            id: schema.dailyProjectLogs.id,
+            emp_name: schema.employees.full_name,
+            project_name: schema.projects.project_name,
+            log_date: schema.dailyProjectLogs.log_date,
+            hours: schema.dailyProjectLogs.hours,
+          })
+          .from(schema.dailyProjectLogs)
+          .innerJoin(schema.employees, eq(schema.dailyProjectLogs.emp_id, schema.employees.id))
+          .innerJoin(schema.projects, eq(schema.dailyProjectLogs.project_id, schema.projects.id))
+          .where(inArray(schema.dailyProjectLogs.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.emp_name} — ${r.project_name} on ${r.log_date} (${r.hours}h)`;
+        break;
+      }
+      case "PHASE": {
+        const rows = await db
+          .select({
+            id: schema.phases.id,
+            phase_name: schema.phases.phase_name,
+            project_name: schema.projects.project_name,
+          })
+          .from(schema.phases)
+          .innerJoin(schema.projects, eq(schema.phases.project_id, schema.projects.id))
+          .where(inArray(schema.phases.id, uniqueIds));
+        for (const r of rows) result[r.id] = `${r.phase_name} (${r.project_name})`;
+        break;
+      }
+      // DEMAND_SKILL, PHASE_REPORT, ATTRIBUTE, ATTRIBUTE_VALUE — fall through, no label
+    }
+  }
+  return result;
+}
 
 // GET /api/audit/list
 export async function GET(req: NextRequest) {
@@ -62,8 +227,14 @@ export async function GET(req: NextRequest) {
       .limit(limit)
       .offset(offset);
 
+    const labelMap = await resolveEntityLabels(audits);
+    const enrichedAudits = audits.map((a) => ({
+      ...a,
+      entity_label: labelMap[a.entity_id] ?? null,
+    }));
+
     return successResponse({
-      audits,
+      audits: enrichedAudits,
       total,
       page,
       limit,

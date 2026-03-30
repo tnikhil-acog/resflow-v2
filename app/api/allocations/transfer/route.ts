@@ -1,14 +1,3 @@
-// POST /api/allocations/transfer
-// Allowed Roles: hr_executive
-// Check JWT role = 'hr_executive', else return 403
-// Accept: { allocation_id, new_project_id, transfer_date }
-// Get old allocation: SELECT * FROM project_allocation WHERE id = allocation_id
-// Validate: transfer_date must be between start_date and end_date, else return 400 "transfer_date must be between start_date and end_date"
-// UPDATE old allocation SET end_date = (transfer_date - 1 day) WHERE id = allocation_id
-// INSERT new allocation with same emp_id, role, allocation_percentage, billability, is_critical_resource but project_id = new_project_id, start_date = transfer_date, assigned_by = current_user_id
-// INSERT audit logs for both UPDATE and INSERT operations with changed_by=current_user_id
-// Return: { old_allocation: { id, end_date }, new_allocation: { id, emp_id, project_id, role, allocation_percentage, start_date, end_date, billability, is_critical_resource, assigned_by } }
-
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser, checkRole } from "@/lib/auth";

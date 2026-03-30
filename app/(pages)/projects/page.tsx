@@ -34,19 +34,7 @@ import { EmptyState } from "@/components/empty-state";
 import { toast } from "sonner";
 import { Plus, Pencil, Search, FileText } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
-
-interface Project {
-  id: string;
-  project_code: string;
-  project_name: string;
-  client_id: string;
-  client_name: string;
-  project_manager_id: string;
-  project_manager_name: string;
-  status: string;
-  started_on: string;
-  closed_on?: string;
-}
+import type { Project } from "@/lib/types";
 
 interface Manager {
   id: string;
@@ -63,7 +51,7 @@ export default function ProjectsListPage() {
 
 function ProjectsListContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,11 +96,9 @@ function ProjectsListContent() {
 
   const fetchProjectCounts = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
 
       // Fetch total count (all projects)
-      const totalRes = await fetch(`/api/projects?limit=0`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const totalRes = await authenticatedFetch(`/api/projects?limit=0`, {
       });
       if (totalRes.ok) {
         const totalData = await totalRes.json();
@@ -120,8 +106,7 @@ function ProjectsListContent() {
       }
 
       // Fetch active count
-      const activeRes = await fetch(`/api/projects?status=ACTIVE&limit=0`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const activeRes = await authenticatedFetch(`/api/projects?status=ACTIVE&limit=0`, {
       });
       if (activeRes.ok) {
         const activeData = await activeRes.json();
@@ -129,10 +114,9 @@ function ProjectsListContent() {
       }
 
       // Fetch completed count
-      const completedRes = await fetch(
+      const completedRes = await authenticatedFetch(
         `/api/projects?status=COMPLETED&limit=0`,
         {
-          headers: { Authorization: `Bearer ${token}` },
         },
       );
       if (completedRes.ok) {
@@ -141,8 +125,7 @@ function ProjectsListContent() {
       }
 
       // Fetch on hold count
-      const onHoldRes = await fetch(`/api/projects?status=ON_HOLD&limit=0`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const onHoldRes = await authenticatedFetch(`/api/projects?status=ON_HOLD&limit=0`, {
       });
       if (onHoldRes.ok) {
         const onHoldData = await onHoldRes.json();
@@ -155,9 +138,7 @@ function ProjectsListContent() {
 
   const fetchManagers = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/employees?limit=1000&role=PM", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/employees?limit=1000&role=PM", {
       });
 
       if (response.ok) {
@@ -172,12 +153,7 @@ function ProjectsListContent() {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
 
-      if (!token) {
-        toast.error("Authentication required");
-        return;
-      }
 
       const params = new URLSearchParams();
 
@@ -187,8 +163,7 @@ function ProjectsListContent() {
       params.append("page", currentPage.toString());
       params.append("limit", pageSize.toString());
 
-      const response = await fetch(`/api/projects?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/projects?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -448,7 +423,7 @@ function ProjectsListContent() {
                           <TableCell>{project.project_manager_name}</TableCell>
                           <TableCell>
                             <Badge
-                              variant={getStatusColor(project.status) as any}
+                              variant={getStatusColor(project.status ?? "") as any}
                             >
                               {project.status}
                             </Badge>

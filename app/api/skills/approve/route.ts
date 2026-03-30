@@ -104,32 +104,35 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Complete the skill approval task(s) for this employee skill
-      let completedTasksCount = 0;
+      // Complete ALL pending tasks for this skill (across all HR users)
+      const skillApprovalTasks = await db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+            eq(schema.tasks.entity_id, employee_skill_id),
+            eq(schema.tasks.status, "DUE"),
+          ),
+        );
 
-      if (task_id) {
-        // If task_id is provided, complete only that specific task
-        const [specificTask] = await db
-          .select()
-          .from(schema.tasks)
+      let completedTasksCount = 0;
+      if (skillApprovalTasks.length > 0) {
+        await db
+          .update(schema.tasks)
+          .set({ status: "COMPLETED" })
           .where(
             and(
-              eq(schema.tasks.id, task_id),
               eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
               eq(schema.tasks.entity_id, employee_skill_id),
               eq(schema.tasks.status, "DUE"),
             ),
           );
 
-        if (specificTask) {
-          await db
-            .update(schema.tasks)
-            .set({ status: "COMPLETED" })
-            .where(eq(schema.tasks.id, task_id));
-
+        for (const task of skillApprovalTasks) {
           await createAuditLog({
             entity_type: "TASK",
-            entity_id: task_id,
+            entity_id: task.id,
             operation: "UPDATE",
             changed_by: user.id,
             changed_fields: {
@@ -137,47 +140,7 @@ export async function POST(req: NextRequest) {
               completion_reason: "Skill request approved",
             },
           });
-          completedTasksCount = 1;
-        }
-      } else {
-        // Otherwise, complete all matching tasks (backward compatibility)
-        const skillApprovalTasks = await db
-          .select()
-          .from(schema.tasks)
-          .where(
-            and(
-              eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
-              eq(schema.tasks.entity_id, employee_skill_id),
-              eq(schema.tasks.status, "DUE"),
-            ),
-          );
-
-        if (skillApprovalTasks.length > 0) {
-          await db
-            .update(schema.tasks)
-            .set({ status: "COMPLETED" })
-            .where(
-              and(
-                eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
-                eq(schema.tasks.entity_id, employee_skill_id),
-                eq(schema.tasks.status, "DUE"),
-              ),
-            );
-
-          // Create audit logs for task completions
-          for (const task of skillApprovalTasks) {
-            await createAuditLog({
-              entity_type: "TASK",
-              entity_id: task.id,
-              operation: "UPDATE",
-              changed_by: user.id,
-              changed_fields: {
-                status: "COMPLETED",
-                completion_reason: "Skill request approved",
-              },
-            });
-            completedTasksCount++;
-          }
+          completedTasksCount++;
         }
       }
 
@@ -210,32 +173,35 @@ export async function POST(req: NextRequest) {
         changed_fields: {},
       });
 
-      // Complete the skill approval task(s) for this employee skill (rejection)
-      let completedTasksCount = 0;
+      // Complete ALL pending tasks for this skill (across all HR users)
+      const skillApprovalTasks = await db
+        .select()
+        .from(schema.tasks)
+        .where(
+          and(
+            eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
+            eq(schema.tasks.entity_id, employee_skill_id),
+            eq(schema.tasks.status, "DUE"),
+          ),
+        );
 
-      if (task_id) {
-        // If task_id is provided, complete only that specific task
-        const [specificTask] = await db
-          .select()
-          .from(schema.tasks)
+      let completedTasksCount = 0;
+      if (skillApprovalTasks.length > 0) {
+        await db
+          .update(schema.tasks)
+          .set({ status: "COMPLETED" })
           .where(
             and(
-              eq(schema.tasks.id, task_id),
               eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
               eq(schema.tasks.entity_id, employee_skill_id),
               eq(schema.tasks.status, "DUE"),
             ),
           );
 
-        if (specificTask) {
-          await db
-            .update(schema.tasks)
-            .set({ status: "COMPLETED" })
-            .where(eq(schema.tasks.id, task_id));
-
+        for (const task of skillApprovalTasks) {
           await createAuditLog({
             entity_type: "TASK",
-            entity_id: task_id,
+            entity_id: task.id,
             operation: "UPDATE",
             changed_by: user.id,
             changed_fields: {
@@ -243,47 +209,7 @@ export async function POST(req: NextRequest) {
               completion_reason: "Skill request rejected",
             },
           });
-          completedTasksCount = 1;
-        }
-      } else {
-        // Otherwise, complete all matching tasks (backward compatibility)
-        const skillApprovalTasks = await db
-          .select()
-          .from(schema.tasks)
-          .where(
-            and(
-              eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
-              eq(schema.tasks.entity_id, employee_skill_id),
-              eq(schema.tasks.status, "DUE"),
-            ),
-          );
-
-        if (skillApprovalTasks.length > 0) {
-          await db
-            .update(schema.tasks)
-            .set({ status: "COMPLETED" })
-            .where(
-              and(
-                eq(schema.tasks.entity_type, "EMPLOYEE_SKILL"),
-                eq(schema.tasks.entity_id, employee_skill_id),
-                eq(schema.tasks.status, "DUE"),
-              ),
-            );
-
-          // Create audit logs for task completions
-          for (const task of skillApprovalTasks) {
-            await createAuditLog({
-              entity_type: "TASK",
-              entity_id: task.id,
-              operation: "UPDATE",
-              changed_by: user.id,
-              changed_fields: {
-                status: "COMPLETED",
-                completion_reason: "Skill request rejected",
-              },
-            });
-            completedTasksCount++;
-          }
+          completedTasksCount++;
         }
       }
 
