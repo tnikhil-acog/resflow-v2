@@ -1381,7 +1381,7 @@ export default function AnalyticsPage() {
                           <Card className="border-primary/20">
                             <CardHeader className="pb-3">
                               <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Billable Employees
+                                Billable Employee Count
                               </CardTitle>
                             </CardHeader>
                             <CardContent>
@@ -1389,7 +1389,7 @@ export default function AnalyticsPage() {
                                 {economicUtilization.billableEmployeeCount}
                               </div>
                               <p className="text-xs text-muted-foreground mt-1">
-                                On billable projects
+                                Sum of billable allocation %
                               </p>
                             </CardContent>
                           </Card>
@@ -1433,7 +1433,7 @@ export default function AnalyticsPage() {
                         {/* Explanation */}
                         <div className="text-sm text-muted-foreground italic mt-4 p-4 bg-muted/50 rounded-lg">
                           💡 Economic utilization measures the percentage of
-                          employees working on billable projects
+                          billable allocation percentage over total employees
                         </div>
                       </div>
                     ) : (
@@ -1460,7 +1460,7 @@ export default function AnalyticsPage() {
                           <Card className="border-primary/20">
                             <CardHeader className="pb-3">
                               <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Utilized Employees
+                                Total Billable Percentage (in employees)
                               </CardTitle>
                             </CardHeader>
                             <CardContent>
@@ -1468,7 +1468,7 @@ export default function AnalyticsPage() {
                                 {capacityUtilization.utilizedEmployeeCount}
                               </div>
                               <p className="text-xs text-muted-foreground mt-1">
-                                With UTILIZED status
+                                Sum of UTILIZED allocation %
                               </p>
                             </CardContent>
                           </Card>
@@ -1512,7 +1512,7 @@ export default function AnalyticsPage() {
                         {/* Explanation */}
                         <div className="text-sm text-muted-foreground italic mt-4 p-4 bg-muted/50 rounded-lg">
                           💡 Capacity utilization measures the percentage of
-                          employees with UTILIZED allocation status
+                          utilized allocation percentage over total employees
                         </div>
                       </div>
                     ) : (

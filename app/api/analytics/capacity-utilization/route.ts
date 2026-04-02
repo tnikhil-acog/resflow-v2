@@ -5,21 +5,21 @@ import { ErrorResponses } from "@/lib/api-helpers";
 import { eq, sql } from "drizzle-orm";
 
 // GET /api/analytics/capacity-utilization
-// Returns capacity utilization metrics: count of employees with UTILIZED status vs total employees
+// Returns capacity utilization metrics based on utilized allocation percentages
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
 
-    // Get count of unique employees with at least one UTILIZED allocation
-    const utilizedEmployeesResult = await db
+    // SUMIFS equivalent: sum allocation percentage where Utilization = UTILIZED
+    const utilizedAllocationResult = await db
       .select({
-        count: sql<string>`COUNT(DISTINCT ${schema.projectAllocation.emp_id})`,
+        total: sql<string>`COALESCE(SUM(${schema.projectAllocation.allocation_percentage}), 0)`,
       })
       .from(schema.projectAllocation)
       .where(eq(schema.projectAllocation.utilization, "UTILIZED"));
 
-    const utilizedEmployeeCount = parseInt(
-      utilizedEmployeesResult[0]?.count || "0",
+    const utilizedEmployeeCount = parseFloat(
+      utilizedAllocationResult[0]?.total || "0",
     );
 
     // Get total active employees
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     const capacityUtilization =
       totalEmployeeCount > 0
         ? parseFloat(
-            ((utilizedEmployeeCount / totalEmployeeCount) * 100).toFixed(2),
+            (utilizedEmployeeCount / totalEmployeeCount).toFixed(2),
           )
         : 0;
 
