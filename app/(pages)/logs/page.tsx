@@ -1,0 +1,526 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { ProtectedRoute } from "@/components/protected-route";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DataTable, Column } from "@/components/data-table";
+import { ProjectCombobox } from "@/components/project-combobox";
+import { EmployeeCombobox } from "@/components/employee-combobox";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { Plus, Pencil, Calendar, Clock, Trash2 } from "lucide-react";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import Link from "next/link";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+interface WorkLog {
+  id: string;
+  emp_id: string;
+  employee_code: string;
+  employee_name: string;
+  project_id: string;
+  project_code: string;
+  project_name: string;
+  log_date: string;
+  hours: string;
+  notes: string | null;
+  locked: boolean;
+  billability?: boolean | null;
+}
+
+export default function LogsPage() {
+  return (
+    <ProtectedRoute>
+      <LogsContent />
+    </ProtectedRoute>
+  );
+}
+
+function LogsContent() {
+  const router = useRouter();
+  const { user, authenticatedFetch } = useAuth();
+  const [logs, setLogs] = useState<WorkLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filters
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedProject, setSelectedProject] = useState<string>("ALL");
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("ALL");
+  const [myLogsOnly, setMyLogsOnly] = useState(false);
+
+  // Employee's allocated projects (for filtering project dropdown)
+  const [employeeProjectIds, setEmployeeProjectIds] = useState<string[]>([]);
+
+  // Delete state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [logToDelete, setLogToDelete] = useState<WorkLog | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const isHR = user?.employee_role === "hr_executive";
+  const isPM = user?.employee_role === "project_manager";
+  const isEmployee = user?.employee_role === "employee";
+
+  useEffect(() => {
+    // Set default date range (last 30 days)
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    setEndDate(today.toISOString().split("T")[0]);
+    setStartDate(thirtyDaysAgo.toISOString().split("T")[0]);
+
+    // Fetch employee's allocated projects if they're a regular employee
+    if (isEmployee && user?.id) {
+      fetchEmployeeProjects();
+    }
+  }, []);
+
+  const fetchEmployeeProjects = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (user?.id) {
+        params.append("emp_id", user.id);
+      }
+
+      const response = await authenticatedFetch(`/api/allocations?${params.toString()}`, {
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch allocations");
+      }
+
+      const data = await response.json();
+      const allocations = data.allocations || [];
+
+      // Extract unique project IDs from all allocations (past and present)
+      const projectIds = [
+        ...new Set(allocations.map((a: any) => a.project_id)),
+      ] as string[];
+      setEmployeeProjectIds(projectIds);
+    } catch (error) {
+      console.error("Error fetching employee projects:", error);
+      toast.error("Failed to load your projects");
+    }
+  };
+
+  useEffect(() => {
+    if (startDate && endDate) {
+      fetchLogs();
+    }
+  }, [startDate, endDate, selectedProject, selectedEmployee, myLogsOnly]);
+
+  const fetchLogs = async () => {
+    try {
+      setLoading(true);
+
+      const params = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate,
+      });
+
+      if (selectedProject && selectedProject !== "ALL") {
+        params.append("project_id", selectedProject);
+      }
+
+      // For HR/PM: add employee filter or myLogsOnly flag
+      if ((isHR || isPM) && myLogsOnly && user?.id) {
+        params.append("emp_id", user.id);
+      } else if (
+        (isHR || isPM) &&
+        selectedEmployee &&
+        selectedEmployee !== "ALL"
+      ) {
+        params.append("emp_id", selectedEmployee);
+      }
+
+      const response = await authenticatedFetch(`/api/logs?${params.toString()}`, {
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch logs");
+      }
+
+      const data = await response.json();
+      setLogs(data.logs || []);
+    } catch (error) {
+      console.error("Error fetching logs:", error);
+      toast.error("Failed to load work logs");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (log: WorkLog) => {
+    if (log.locked) {
+      toast.error("Cannot edit locked logs (already submitted in a report)");
+      return;
+    }
+    router.push(`/logs/${log.id}`);
+  };
+
+  const openDeleteDialog = (log: WorkLog) => {
+    if (log.locked) {
+      toast.error("Cannot delete locked logs (already submitted in a report)");
+      return;
+    }
+    setLogToDelete(log);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!logToDelete) return;
+
+    setDeleting(true);
+
+    try {
+      const response = await authenticatedFetch(`/api/logs/${logToDelete.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete log");
+      }
+
+      toast.success("Log deleted successfully");
+      setDeleteDialogOpen(false);
+      setLogToDelete(null);
+      fetchLogs(); // Refresh the list
+    } catch (error) {
+      console.error("Error deleting log:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete log",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const columns: Column<WorkLog>[] = [
+    {
+      key: "log_date",
+      header: "Date",
+      render: (log) => new Date(log.log_date).toLocaleDateString(),
+    },
+    {
+      key: "project",
+      header: "Project",
+      render: (log) => (
+        <div>
+          <div className="font-medium">{log.project_name}</div>
+          <div className="text-sm text-muted-foreground">
+            {log.project_code}
+          </div>
+        </div>
+      ),
+    },
+  ];
+
+  // Add employee column for HR and PM
+  if (isHR || isPM) {
+    columns.push({
+      key: "employee",
+      header: "Employee",
+      render: (log) => (
+        <div>
+          <div className="font-medium">{log.employee_name}</div>
+          <div className="text-sm text-muted-foreground">
+            {log.employee_code}
+          </div>
+        </div>
+      ),
+    });
+  }
+
+  columns.push(
+    {
+      key: "hours",
+      header: "Hours",
+      render: (log) => (
+        <div className="flex items-center gap-1">
+          <Clock className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium">{log.hours}h</span>
+        </div>
+      ),
+    },
+    {
+      key: "billability",
+      header: "Billability",
+      render: (log) =>
+        log.billability === true ? (
+          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+            Billable
+          </span>
+        ) : log.billability === false ? (
+          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
+            Non-Billable
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+            Unknown
+          </span>
+        ),
+    },
+    {
+      key: "notes",
+      header: "Notes",
+      render: (log) => (
+        <span className="text-sm line-clamp-2">
+          {log.notes || <span className="text-muted-foreground">No notes</span>}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (log) =>
+        log.locked ? (
+          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+            🔒 Locked
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+            Editable
+          </span>
+        ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      render: (log) => (
+        <div className="flex items-center gap-2">
+          {/* Only the owner can edit/delete their own log */}
+          {user?.id === log.emp_id && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleEdit(log)}
+                disabled={log.locked}
+                title={log.locked ? "Cannot edit locked logs" : "Edit log"}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => openDeleteDialog(log)}
+                disabled={log.locked}
+                title={log.locked ? "Cannot delete locked logs" : "Delete log"}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="border-b">
+        <div className="container mx-auto px-6 md:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold">Work Logs</h1>
+              <p className="text-muted-foreground mt-1">
+                Track your daily project hours
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/logs/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Log Timesheet
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-6 md:px-8 py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Filter Logs</CardTitle>
+            <CardDescription>
+              Filter work logs by date range{isHR || isPM ? ", employee," : ""}{" "}
+              and project
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* My Logs Only Toggle for HR/PM */}
+            {(isHR || isPM) && (
+              <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="my-logs-only"
+                    className="text-base cursor-pointer"
+                  >
+                    My Logs Only
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Show only your own work logs
+                  </p>
+                </div>
+                <Switch
+                  id="my-logs-only"
+                  checked={myLogsOnly}
+                  onCheckedChange={setMyLogsOnly}
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start_date">Start Date</Label>
+                <Input
+                  id="start_date"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  max={endDate || new Date().toISOString().split("T")[0]}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="end_date">End Date</Label>
+                <Input
+                  id="end_date"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate}
+                  max={new Date().toISOString().split("T")[0]}
+                />
+              </div>
+
+              {/* Employee Filter for HR/PM */}
+              {(isHR || isPM) && (
+                <div className="space-y-2">
+                  <Label htmlFor="employee">Employee</Label>
+                  <EmployeeCombobox
+                    value={selectedEmployee}
+                    onValueChange={setSelectedEmployee}
+                    placeholder="All employees"
+                    showAllOption={true}
+                    filterByPMProjects={isPM}
+                    disabled={myLogsOnly}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="project">Project</Label>
+                <ProjectCombobox
+                  value={selectedProject}
+                  onValueChange={setSelectedProject}
+                  placeholder="All projects"
+                  showAllOption={true}
+                  pmScope="managed"
+                  filterProjectIds={isEmployee ? employeeProjectIds : undefined}
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Work Logs</CardTitle>
+              <CardDescription>
+                {logs.length} log(s) found for the selected period
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                data={logs}
+                columns={columns}
+                searchKeys={["project_name", "project_code", "notes"]}
+                searchPlaceholder="Search by project or notes..."
+                emptyMessage="No work logs found for the selected period"
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Work Log</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this log entry?
+              </AlertDialogDescription>
+              {logToDelete && (
+                <div className="mt-4 p-4 bg-muted rounded-md text-sm text-left">
+                  <div>
+                    <strong>Date:</strong>{" "}
+                    {new Date(logToDelete.log_date).toLocaleDateString()}
+                  </div>
+                  <div>
+                    <strong>Project:</strong> {logToDelete.project_name}
+                  </div>
+                  <div>
+                    <strong>Hours:</strong> {logToDelete.hours}h
+                  </div>
+                </div>
+              )}
+              <div className="mt-2 text-destructive font-medium">
+                This action cannot be undone.
+              </div>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </div>
+  );
+}
