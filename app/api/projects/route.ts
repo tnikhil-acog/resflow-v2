@@ -263,6 +263,7 @@ async function handleListProjects(
 ) {
   const status = searchParams.get("status");
   const project_manager_id = searchParams.get("project_manager_id");
+  const pm_scope = searchParams.get("pm_scope");
   const search = searchParams.get("search");
   const { page, limit, offset } = getPaginationParams(new URL(req.url));
 
@@ -276,6 +277,43 @@ async function handleListProjects(
     whereConditions.push(
       eq(schema.projects.project_manager_id, project_manager_id),
     );
+  }
+
+  if (user.employee_role === "project_manager" && pm_scope === "my_team") {
+    const [managedProjects, directReports] = await Promise.all([
+      db
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(eq(schema.projects.project_manager_id, user.id)),
+      db
+        .select({ id: schema.employees.id })
+        .from(schema.employees)
+        .where(eq(schema.employees.reporting_manager_id, user.id)),
+    ]);
+
+    const reporteeIds = directReports.map((r) => r.id);
+    let reporteeProjectIds: string[] = [];
+
+    if (reporteeIds.length > 0) {
+      const reporteeProjects = await db
+        .selectDistinct({ project_id: schema.projectAllocation.project_id })
+        .from(schema.projectAllocation)
+        .where(inArray(schema.projectAllocation.emp_id, reporteeIds));
+      reporteeProjectIds = reporteeProjects.map((p) => p.project_id);
+    }
+
+    const visibleProjectIds = [
+      ...new Set([
+        ...managedProjects.map((p) => p.id),
+        ...reporteeProjectIds,
+      ]),
+    ];
+
+    if (visibleProjectIds.length === 0) {
+      return successResponse({ projects: [], total: 0, page, limit });
+    }
+
+    whereConditions.push(inArray(schema.projects.id, visibleProjectIds));
   }
 
   if (search && search.trim()) {

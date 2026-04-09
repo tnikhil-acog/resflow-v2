@@ -107,6 +107,27 @@ interface WeekEntry {
   hours: Record<string, string>; // ISO date → raw "hh:mm" string
 }
 
+interface ExistingLogCell {
+  id: string;
+  project_id: string;
+  log_date: string;
+  hours: string;
+  notes: string | null;
+  locked: boolean;
+}
+
+function toTimeInputString(value: string | number): string {
+  const decimal = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(decimal) || decimal <= 0) return "";
+  const h = Math.floor(decimal);
+  const m = Math.round((decimal - h) * 60);
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+}
+
+function getLogKey(projectId: string, logDate: string): string {
+  return `${projectId}__${logDate}`;
+}
+
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function WeeklyTimesheetPage() {
@@ -123,6 +144,9 @@ export default function WeeklyTimesheetPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [existingLogsByKey, setExistingLogsByKey] = useState<
+    Record<string, ExistingLogCell>
+  >({});
   // Track whether the last keypress was a deletion so enforceTimeInput can suppress colon auto-insert
   const isDeletingRef = useRef(false);
 
@@ -183,6 +207,65 @@ export default function WeeklyTimesheetPage() {
     });
   }
 
+  useEffect(() => {
+    async function fetchWeekLogs() {
+      if (!user?.id) return;
+
+      try {
+        const startISO = dateToISO(weekDays[0]);
+        const endISO = dateToISO(weekDays[4]);
+        const res = await authenticatedFetch(
+          `/api/logs?start_date=${startISO}&end_date=${endISO}&limit=500`,
+        );
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch existing week logs");
+        }
+
+        const data = await res.json();
+        const logs = (data.logs || []) as ExistingLogCell[];
+
+        const byKey: Record<string, ExistingLogCell> = {};
+        const grouped: Record<string, WeekEntry> = {};
+
+        logs.forEach((log) => {
+          const key = getLogKey(log.project_id, log.log_date);
+          byKey[key] = log;
+
+          if (!grouped[log.project_id]) {
+            grouped[log.project_id] = {
+              id: crypto.randomUUID(),
+              project_id: log.project_id,
+              notes: log.notes || "",
+              hours: {},
+            };
+          }
+
+          grouped[log.project_id].hours[log.log_date] = toTimeInputString(
+            log.hours,
+          );
+
+          if (!grouped[log.project_id].notes && log.notes) {
+            grouped[log.project_id].notes = log.notes;
+          }
+        });
+
+        setExistingLogsByKey(byKey);
+
+        const seededEntries = Object.values(grouped);
+        setEntries(
+          seededEntries.length > 0
+            ? seededEntries
+            : [{ id: crypto.randomUUID(), project_id: "", notes: "", hours: {} }],
+        );
+      } catch {
+        toast.error("Failed to load existing logs for this week");
+      }
+    }
+
+    fetchWeekLogs();
+  }, [weekStart, user?.id]);
+
   // ── entry management ────────────────────────────────────────────────────────
   function addEntry() {
     setEntries((prev) => [
@@ -227,19 +310,29 @@ export default function WeeklyTimesheetPage() {
 
   // ── submit ──────────────────────────────────────────────────────────────────
   async function handleSubmit() {
-    const logs: Array<{
+    const createLogs: Array<{
       project_id: string;
       log_date: string;
       hours: number;
       notes: string | null;
     }> = [];
+    const updateLogs: Array<{ id: string; hours: number; notes: string | null }> = [];
+    const deleteLogIds: string[] = [];
 
     for (const entry of entries) {
       if (!entry.project_id) continue;
       for (const day of workDays) {
         const iso = dateToISO(day);
         const raw = entry.hours[iso];
-        if (!raw || !raw.trim()) continue;
+        const key = getLogKey(entry.project_id, iso);
+        const existing = existingLogsByKey[key];
+
+        if (!raw || !raw.trim()) {
+          if (existing && !existing.locked) {
+            deleteLogIds.push(existing.id);
+          }
+          continue;
+        }
 
         const h = parseHours(raw);
         if (isNaN(h) || h <= 0) {
@@ -252,17 +345,50 @@ export default function WeeklyTimesheetPage() {
           toast.error(`Hours cannot exceed 24 for ${iso}.`);
           return;
         }
-        logs.push({
-          project_id: entry.project_id,
-          log_date: iso,
-          hours: Math.round(h * 100) / 100, // round to 2dp to match decimal(4,2) schema
-          notes: entry.notes || null,
-        });
+
+        const roundedHours = Math.round(h * 100) / 100;
+        const notesValue = entry.notes || null;
+
+        if (existing) {
+          if (existing.locked) {
+            if (
+              roundedHours !== Math.round(parseFloat(existing.hours) * 100) / 100 ||
+              (notesValue || "") !== (existing.notes || "")
+            ) {
+              toast.error(
+                `Cannot edit locked log for ${iso}.`,
+              );
+              return;
+            }
+            continue;
+          }
+
+          const existingHours = Math.round(parseFloat(existing.hours) * 100) / 100;
+          const existingNotes = existing.notes || "";
+          if (roundedHours !== existingHours || (notesValue || "") !== existingNotes) {
+            updateLogs.push({
+              id: existing.id,
+              hours: roundedHours,
+              notes: notesValue,
+            });
+          }
+        } else {
+          createLogs.push({
+            project_id: entry.project_id,
+            log_date: iso,
+            hours: roundedHours,
+            notes: notesValue,
+          });
+        }
       }
     }
 
-    if (logs.length === 0) {
-      toast.error("No hours entered. Fill in at least one cell before submitting.");
+    if (
+      createLogs.length === 0 &&
+      updateLogs.length === 0 &&
+      deleteLogIds.length === 0
+    ) {
+      toast.error("No changes detected to submit.");
       return;
     }
 
@@ -278,25 +404,55 @@ export default function WeeklyTimesheetPage() {
 
     setSubmitting(true);
     try {
-      const res = await authenticatedFetch("/api/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logs }),
-      });
+      let created = 0;
+      let updated = 0;
+      let deleted = 0;
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to submit logs");
-
-      const { successful, failed, errors: errs } = data;
-      if (failed > 0) {
-        const msgs = (errs as Array<{ error: string }>)
-          .map((e) => e.error)
-          .join("; ");
-        toast.warning(`${successful} submitted, ${failed} skipped (${msgs}).`);
-      } else {
-        toast.success(`${successful} work log(s) submitted successfully!`);
+      if (createLogs.length > 0) {
+        const createRes = await authenticatedFetch("/api/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ logs: createLogs }),
+        });
+        const createData = await createRes.json();
+        if (!createRes.ok) {
+          throw new Error(createData.error || "Failed to create logs");
+        }
+        created = createData.successful || 0;
       }
-      amplitude.track("log_submitted", { count: successful });
+
+      for (const payload of updateLogs) {
+        const updateRes = await authenticatedFetch(`/api/logs/${payload.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hours: payload.hours, notes: payload.notes }),
+        });
+        if (!updateRes.ok) {
+          const updateData = await updateRes.json();
+          throw new Error(updateData.error || "Failed to update existing logs");
+        }
+        updated += 1;
+      }
+
+      for (const id of deleteLogIds) {
+        const deleteRes = await authenticatedFetch(`/api/logs/${id}`, {
+          method: "DELETE",
+        });
+        if (!deleteRes.ok) {
+          const deleteData = await deleteRes.json();
+          throw new Error(deleteData.error || "Failed to delete cleared logs");
+        }
+        deleted += 1;
+      }
+
+      toast.success(
+        `Timesheet saved. Created: ${created}, Updated: ${updated}, Deleted: ${deleted}.`,
+      );
+      amplitude.track("log_submitted", {
+        created,
+        updated,
+        deleted,
+      });
 
       router.push("/logs");
     } catch (err: any) {

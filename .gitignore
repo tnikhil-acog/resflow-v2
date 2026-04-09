@@ -25,7 +25,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-lib/ldap-helpers.ts
 
 maps
 data
@@ -36,3 +35,5 @@ scripts/update_ldap.sql
 app.zip
 app.backup/app
 migrations
+lib/ldap-helpers.ts
+docker-compose.yml

@@ -24,7 +24,7 @@ function errorResponse(message: string, status: number) {
 }
 
 function getGoogleConfig() {
-  const baseUrl = (process.env.BASE_URL || "http://localhost:3000").replace(
+  const baseUrl = (process.env.BASE_URL || "http://localhost:3000/").replace(
     /\/$/,
     "",
   );

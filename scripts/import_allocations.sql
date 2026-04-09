@@ -44,8 +44,11 @@ SELECT
   -- "100.0%" -> 100.0
   REPLACE(s.allocation_percent, '%', '')::decimal,
 
-  -- Period (2025-09) is the allocation start month -> first day of that month
-  date_trunc('month', (trim(s.period) || '-01')::date)::date,
+  -- Use period as month start, fallback to allocated_date
+  COALESCE(
+    date_trunc('month', (NULLIF(trim(s.period), '') || '-01')::date)::date,
+    s.allocated_date::date
+  ),
 
   -- end_date is not provided in the CSV; leave as NULL (ongoing allocation)
   NULL,

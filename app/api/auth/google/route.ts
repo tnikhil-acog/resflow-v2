@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 const STATE_COOKIE = "google_oauth_state";
 
 function getGoogleConfig() {
-  const baseUrl = (process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000").replace(
+  const baseUrl = (process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/").replace(
     /\/$/,
     "",
   );

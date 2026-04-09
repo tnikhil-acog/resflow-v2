@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ErrorResponses } from "@/lib/api-helpers";
-import { eq, and, sql, or, isNull } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 // GET /api/analytics/pm-team-hours
 // Returns hours logged this week per team member, for the PM's projects.
@@ -28,48 +28,56 @@ export async function GET(req: NextRequest) {
     sunday.setDate(monday.getDate() + 6);
     const weekStart = monday.toISOString().split("T")[0];
     const weekEnd = sunday.toISOString().split("T")[0];
-    const today = now.toISOString().split("T")[0];
+    const managedProjects = await db
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.project_manager_id, user.id));
 
-    // Step 1: all currently active team members on PM's projects
+    let scopedEmpIds: string[] = [];
+
+    if (managedProjects.length > 0) {
+      const managedProjectIds = managedProjects.map((p) => p.id);
+      const teamMembers = await db
+        .selectDistinct({ emp_id: schema.projectAllocation.emp_id })
+        .from(schema.projectAllocation)
+        .where(inArray(schema.projectAllocation.project_id, managedProjectIds));
+      scopedEmpIds = teamMembers.map((m) => m.emp_id);
+    } else {
+      const reportees = await db
+        .select({ id: schema.employees.id })
+        .from(schema.employees)
+        .where(eq(schema.employees.reporting_manager_id, user.id));
+      scopedEmpIds = reportees.map((r) => r.id);
+    }
+
+    const visibleEmpIds = [...new Set(scopedEmpIds)];
+
+    if (visibleEmpIds.length === 0) {
+      return NextResponse.json({
+        data: [],
+        week: { start: weekStart, end: weekEnd },
+      });
+    }
+
+    // Step 1: visible members = project team members + direct reports
     const teamMembers = await db
-      .selectDistinct({
-        emp_id: schema.projectAllocation.emp_id,
+      .select({
+        id: schema.employees.id,
         full_name: schema.employees.full_name,
       })
-      .from(schema.projectAllocation)
-      .innerJoin(
-        schema.projects,
-        eq(schema.projectAllocation.project_id, schema.projects.id),
-      )
-      .innerJoin(
-        schema.employees,
-        eq(schema.projectAllocation.emp_id, schema.employees.id),
-      )
-      .where(
-        and(
-          eq(schema.projects.project_manager_id, user.id),
-          sql`${schema.projectAllocation.start_date} <= ${today}`,
-          or(
-            isNull(schema.projectAllocation.end_date),
-            sql`${schema.projectAllocation.end_date} >= ${today}`,
-          ),
-        ),
-      );
+      .from(schema.employees)
+      .where(inArray(schema.employees.id, visibleEmpIds));
 
-    // Step 2: hours logged by each member this week on PM's projects
+    // Step 2: hours logged by visible members this week
     const hoursRows = await db
       .select({
         emp_id: schema.dailyProjectLogs.emp_id,
         total_hours: sql<string>`COALESCE(SUM(${schema.dailyProjectLogs.hours}::numeric), 0)`,
       })
       .from(schema.dailyProjectLogs)
-      .innerJoin(
-        schema.projects,
-        eq(schema.dailyProjectLogs.project_id, schema.projects.id),
-      )
       .where(
         and(
-          eq(schema.projects.project_manager_id, user.id),
+          inArray(schema.dailyProjectLogs.emp_id, visibleEmpIds),
           sql`${schema.dailyProjectLogs.log_date} >= ${weekStart}`,
           sql`${schema.dailyProjectLogs.log_date} <= ${weekEnd}`,
         ),
@@ -85,9 +93,9 @@ export async function GET(req: NextRequest) {
     // Merge: include every team member, even those with 0 hours
     const merged = teamMembers
       .map((m) => ({
-        emp_id: m.emp_id,
-        name: m.full_name ?? m.emp_id,
-        hours: hoursByEmpId[m.emp_id] ?? 0,
+        emp_id: m.id,
+        name: m.full_name ?? m.id,
+        hours: hoursByEmpId[m.id] ?? 0,
       }))
       .sort((a, b) => b.hours - a.hours);
 
