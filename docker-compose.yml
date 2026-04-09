@@ -1,0 +1,68 @@
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: resflow-db
+    labels:
+      user: "tnikhil"
+      description: "PostgreSQL database service for ResFlow application data"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: resflowdb
+      POSTGRES_USER: resflowuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+      - ./backups:/backups
+      - ./data:/data
+    ports:
+      - "5432:5432"
+    networks:
+      - resflow-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resflowuser -d resflowdb"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resflow-app
+    labels:
+      user: "tnikhil"
+      description: "ResFlow Next.js application and API service"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://resflowuser:${POSTGRES_PASSWORD:-changeme}@db:5432/resflowdb
+      JWT_SECRET: ${JWT_SECRET:-resflowsecret}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      CRON_API_KEY: ${CRON_API_KEY:-}
+      LDAP_URI: ${LDAP_URI:-}
+      LDAP_USER_DN: ${LDAP_USER_DN:-}
+      LDAP_DOMAIN: ${LDAP_DOMAIN:-}
+      LDAP_URL: ldap://ldap.aganitha.ai
+      LDAP_BASE_DN: ou=people,dc=aganitha,dc=ai
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/google-callback}
+      GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-aganitha.ai}
+    volumes:
+      - cron_logs:/var/log
+    networks:
+      - resflow-network
+
+networks:
+  resflow-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  cron_logs:
