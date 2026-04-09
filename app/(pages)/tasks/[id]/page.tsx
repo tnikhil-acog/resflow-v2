@@ -54,7 +54,7 @@ interface Task {
 export default function TaskDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
@@ -71,9 +71,7 @@ export default function TaskDetailPage() {
 
   const fetchTask = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/tasks?id=${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/tasks?id=${id}`, {
       });
 
       if (!response.ok) {
@@ -96,12 +94,10 @@ export default function TaskDetailPage() {
 
     setCompleting(true);
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/tasks/complete", {
+      const response = await authenticatedFetch("/api/tasks/complete", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ id: task.id }),
       });
@@ -126,10 +122,8 @@ export default function TaskDetailPage() {
 
     setDeleting(true);
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/tasks?id=${task.id}`, {
+      const response = await authenticatedFetch(`/api/tasks?id=${task.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {

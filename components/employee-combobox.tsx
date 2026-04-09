@@ -81,53 +81,9 @@ export function EmployeeCombobox({
         params.append("search", searchQuery);
       }
 
-      // If filterByPMProjects is true and user is PM, get employees from their projects
+      // PM team scope includes project team members and direct reports.
       if (filterByPMProjects && isPM && user?.id) {
-        // First, get PM's projects
-        const projectsRes = await fetch(
-          `/api/projects?project_manager_id=${user.id}&limit=999`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
-
-        if (projectsRes.ok) {
-          const projectsData = await projectsRes.json();
-          const projects = projectsData.projects || [];
-
-          if (projects.length > 0) {
-            // Get unique employee IDs from allocations
-            const projectIds = projects.map((p: any) => p.id);
-
-            // Fetch allocations for these projects
-            const allocationsRes = await fetch(
-              `/api/allocations?project_ids=${projectIds.join(",")}&limit=999`,
-              {
-                headers: { Authorization: `Bearer ${token}` },
-              },
-            );
-
-            if (allocationsRes.ok) {
-              const allocData = await allocationsRes.json();
-              const allocations = allocData.allocations || [];
-              const uniqueEmpIds = [
-                ...new Set(allocations.map((a: any) => a.emp_id)),
-              ];
-
-              if (uniqueEmpIds.length > 0) {
-                params.append("ids", uniqueEmpIds.join(","));
-              } else {
-                // PM has projects but no allocations
-                setEmployees([]);
-                return;
-              }
-            }
-          } else {
-            // PM has no projects
-            setEmployees([]);
-            return;
-          }
-        }
+        params.append("pm_scope", "my_team");
       }
 
       const response = await fetch(`/api/employees?${params.toString()}`, {
@@ -153,6 +109,7 @@ export function EmployeeCombobox({
         <Button
           variant="outline"
           role="combobox"
+          size="sm"
           aria-expanded={open}
           className={cn("w-full justify-between", className)}
           disabled={disabled}
@@ -165,7 +122,10 @@ export function EmployeeCombobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search employee..."

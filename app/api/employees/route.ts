@@ -203,35 +203,6 @@ async function handleGetEmployee(
     if (id !== user.id) {
       return ErrorResponses.accessDenied();
     }
-  } else if (user.employee_role === "project_manager") {
-    // Check if viewing self or team member
-    if (id !== user.id) {
-      const managedProjects = await db
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(eq(schema.projects.project_manager_id, user.id));
-
-      const projectIds = managedProjects.map((p) => p.id);
-
-      if (projectIds.length > 0) {
-        const [allocation] = await db
-          .select({ emp_id: schema.projectAllocation.emp_id })
-          .from(schema.projectAllocation)
-          .where(
-            and(
-              eq(schema.projectAllocation.emp_id, id),
-              inArray(schema.projectAllocation.project_id, projectIds),
-            ),
-          )
-          .limit(1);
-
-        if (!allocation) {
-          return ErrorResponses.accessDenied();
-        }
-      } else {
-        return ErrorResponses.accessDenied();
-      }
-    }
   }
 
   // Fetch employee
@@ -289,9 +260,44 @@ async function handleListEmployees(
   const department_id = searchParams.get("department_id");
   const role = searchParams.get("role");
   const search = searchParams.get("search");
+  const pm_scope = searchParams.get("pm_scope");
   const { page, limit, offset } = getPaginationParams(new URL(req.url));
 
   const whereConditions: any[] = [];
+
+  // PM team scope for dropdowns:
+  // 1) If PM manages projects, include only employees allocated to those projects.
+  // 2) If PM manages no projects, include only direct reports.
+  if (user.employee_role === "project_manager" && pm_scope === "my_team") {
+    const managedProjects = await db
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.project_manager_id, user.id));
+
+    let visibleIds: string[] = [];
+
+    if (managedProjects.length > 0) {
+      const managedProjectIds = managedProjects.map((p) => p.id);
+      const teamMembers = await db
+        .selectDistinct({ emp_id: schema.projectAllocation.emp_id })
+        .from(schema.projectAllocation)
+        .where(inArray(schema.projectAllocation.project_id, managedProjectIds));
+      visibleIds = teamMembers.map((m) => m.emp_id);
+    } else {
+      const reportees = await db
+        .select({ id: schema.employees.id })
+        .from(schema.employees)
+        .where(eq(schema.employees.reporting_manager_id, user.id));
+      visibleIds = reportees.map((r) => r.id);
+    }
+
+    visibleIds = [...new Set(visibleIds)];
+
+    if (visibleIds.length === 0) {
+      return successResponse({ employees: [], total: 0, page, limit });
+    }
+    whereConditions.push(inArray(schema.employees.id, visibleIds));
+  }
 
   if (status) {
     whereConditions.push(eq(schema.employees.status, status as any));

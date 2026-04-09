@@ -25,6 +25,7 @@ import { EmployeeCombobox } from "@/components/employee-combobox";
 import { ProjectCombobox } from "@/components/project-combobox";
 import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/use-toast";
+import amplitude from "@/lib/amplitude";
 
 type ExportType =
   | "logs"
@@ -37,7 +38,7 @@ type ExportType =
 type ExportFormat = "csv" | "excel";
 
 export default function ExportsPage() {
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const router = useRouter();
 
   // Redirect if not HR
@@ -64,6 +65,7 @@ export default function ExportsPage() {
     "active" | "completed" | "all"
   >("all");
   const [projectType, setProjectType] = useState<string>("ALL");
+  const [departmentId, setDepartmentId] = useState<string>("ALL");
   const [auditAction, setAuditAction] = useState<string>("ALL");
   const [auditEntityType, setAuditEntityType] = useState<string>("ALL");
   const [isExporting, setIsExporting] = useState(false);
@@ -132,8 +134,8 @@ export default function ExportsPage() {
         case "employees":
           url = `/api/exports/employees`;
           params.append("status", employeeStatus);
-          if (projectId && projectId !== "ALL")
-            params.append("department_id", projectId);
+          if (departmentId && departmentId !== "ALL")
+            params.append("department_id", departmentId);
           break;
 
         case "projects":
@@ -163,9 +165,8 @@ export default function ExportsPage() {
           break;
       }
 
-      const response = await fetch(`${url}?${params.toString()}`, {
+      const response = await authenticatedFetch(`${url}?${params.toString()}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
       });
 
@@ -199,6 +200,7 @@ export default function ExportsPage() {
         title: "Export successful",
         description: `Downloaded ${filename}`,
       });
+      amplitude.track("export_downloaded", { export_type: exportType, format });
     } catch (error: any) {
       console.error("Export error:", error);
       toast({
@@ -381,18 +383,6 @@ export default function ExportsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Department (Optional)</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All departments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Departments</SelectItem>
-                  {/* Department options would be loaded dynamically */}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         );
 
@@ -464,11 +454,9 @@ export default function ExportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Actions</SelectItem>
-                  <SelectItem value="CREATE">Create</SelectItem>
+                  <SelectItem value="INSERT">Insert (Create)</SelectItem>
                   <SelectItem value="UPDATE">Update</SelectItem>
                   <SelectItem value="DELETE">Delete</SelectItem>
-                  <SelectItem value="LOGIN">Login</SelectItem>
-                  <SelectItem value="LOGOUT">Logout</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -483,12 +471,16 @@ export default function ExportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Entities</SelectItem>
-                  <SelectItem value="employee">Employee</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                  <SelectItem value="allocation">Allocation</SelectItem>
-                  <SelectItem value="log">Work Log</SelectItem>
-                  <SelectItem value="report">Report</SelectItem>
-                  <SelectItem value="skill">Skill</SelectItem>
+                  <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                  <SelectItem value="PROJECT">Project</SelectItem>
+                  <SelectItem value="PROJECT_ALLOCATION">Allocation</SelectItem>
+                  <SelectItem value="DAILY_PROJECT_LOG">Work Log</SelectItem>
+                  <SelectItem value="REPORT">Report</SelectItem>
+                  <SelectItem value="SKILL">Skill</SelectItem>
+                  <SelectItem value="DEPARTMENT">Department</SelectItem>
+                  <SelectItem value="CLIENT">Client</SelectItem>
+                  <SelectItem value="DEMAND">Resource Demand</SelectItem>
+                  <SelectItem value="TASK">Task</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -526,6 +518,7 @@ export default function ExportsPage() {
                 setEndDate("");
                 setEmployeeId("");
                 setProjectId("");
+                setDepartmentId("ALL");
               }}
             >
               <SelectTrigger>

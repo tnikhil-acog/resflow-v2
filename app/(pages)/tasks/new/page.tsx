@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
@@ -12,24 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { EmployeeCombobox } from "@/components/employee-combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { ArrowLeft, Save } from "lucide-react";
-import { LoadingPage } from "@/components/loading-spinner";
-
-interface Employee {
-  id: string;
-  employee_code: string;
-  full_name: string;
-}
 
 export default function NewTaskPage() {
   return (
@@ -41,40 +28,13 @@ export default function NewTaskPage() {
 
 function NewTaskContent() {
   const router = useRouter();
-  const { user } = useAuth();
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, authenticatedFetch } = useAuth();
   const [submitting, setSubmitting] = useState(false);
 
   // Form state - simplified to only required fields
   const [ownerId, setOwnerId] = useState("");
   const [description, setDescription] = useState("");
   const [dueOn, setDueOn] = useState("");
-
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  const fetchEmployees = async () => {
-    try {
-      const token = localStorage.getItem("auth_token");
-
-      // Fetch employees
-      const empResponse = await fetch("/api/employees", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (empResponse.ok) {
-        const empData = await empResponse.json();
-        setEmployees(empData.employees || []);
-      }
-    } catch (error) {
-      console.error("Error fetching employees:", error);
-      toast.error("Failed to load employees");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,12 +46,10 @@ function NewTaskContent() {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/tasks", {
+      const response = await authenticatedFetch("/api/tasks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           owner_id: ownerId,
@@ -116,8 +74,6 @@ function NewTaskContent() {
       setSubmitting(false);
     }
   };
-
-  if (loading) return <LoadingPage />;
 
   return (
     <div className="min-h-screen bg-background">
@@ -157,18 +113,11 @@ function NewTaskContent() {
                   <label className="text-sm font-medium">
                     Task Owner <span className="text-destructive">*</span>
                   </label>
-                  <Select value={ownerId} onValueChange={setOwnerId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select employee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employees.map((emp) => (
-                        <SelectItem key={emp.id} value={emp.id}>
-                          {emp.employee_code} - {emp.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <EmployeeCombobox
+                    value={ownerId}
+                    onValueChange={setOwnerId}
+                    placeholder="Search and select employee..."
+                  />
                   <p className="text-xs text-muted-foreground">
                     Employee who will be responsible for this task
                   </p>

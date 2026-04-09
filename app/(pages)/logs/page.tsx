@@ -65,7 +65,7 @@ export default function LogsPage() {
 
 function LogsContent() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [logs, setLogs] = useState<WorkLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -105,14 +105,12 @@ function LogsContent() {
 
   const fetchEmployeeProjects = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
       const params = new URLSearchParams();
       if (user?.id) {
         params.append("emp_id", user.id);
       }
 
-      const response = await fetch(`/api/allocations?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/allocations?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -142,7 +140,6 @@ function LogsContent() {
   const fetchLogs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
 
       const params = new URLSearchParams({
         start_date: startDate,
@@ -164,8 +161,7 @@ function LogsContent() {
         params.append("emp_id", selectedEmployee);
       }
 
-      const response = await fetch(`/api/logs?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/logs?${params.toString()}`, {
       });
 
       if (!response.ok) {
@@ -205,10 +201,8 @@ function LogsContent() {
     setDeleting(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/logs/${logToDelete.id}`, {
+      const response = await authenticatedFetch(`/api/logs/${logToDelete.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -374,7 +368,7 @@ function LogsContent() {
             <Button asChild>
               <Link href="/logs/new">
                 <Plus className="h-4 w-4 mr-2" />
-                Log Work
+                Log Timesheet
               </Link>
             </Button>
           </div>
@@ -446,6 +440,7 @@ function LogsContent() {
                     onValueChange={setSelectedEmployee}
                     placeholder="All employees"
                     showAllOption={true}
+                    filterByPMProjects={isPM}
                     disabled={myLogsOnly}
                   />
                 </div>
@@ -458,6 +453,7 @@ function LogsContent() {
                   onValueChange={setSelectedProject}
                   placeholder="All projects"
                   showAllOption={true}
+                  pmScope="managed"
                   filterProjectIds={isEmployee ? employeeProjectIds : undefined}
                   className="w-full"
                 />
@@ -493,24 +489,24 @@ function LogsContent() {
               <AlertDialogTitle>Delete Work Log</AlertDialogTitle>
               <AlertDialogDescription>
                 Are you sure you want to delete this log entry?
-                {logToDelete && (
-                  <div className="mt-4 p-4 bg-muted rounded-md text-sm">
-                    <div>
-                      <strong>Date:</strong>{" "}
-                      {new Date(logToDelete.log_date).toLocaleDateString()}
-                    </div>
-                    <div>
-                      <strong>Project:</strong> {logToDelete.project_name}
-                    </div>
-                    <div>
-                      <strong>Hours:</strong> {logToDelete.hours}h
-                    </div>
-                  </div>
-                )}
-                <p className="mt-2 text-destructive font-medium">
-                  This action cannot be undone.
-                </p>
               </AlertDialogDescription>
+              {logToDelete && (
+                <div className="mt-4 p-4 bg-muted rounded-md text-sm text-left">
+                  <div>
+                    <strong>Date:</strong>{" "}
+                    {new Date(logToDelete.log_date).toLocaleDateString()}
+                  </div>
+                  <div>
+                    <strong>Project:</strong> {logToDelete.project_name}
+                  </div>
+                  <div>
+                    <strong>Hours:</strong> {logToDelete.hours}h
+                  </div>
+                </div>
+              )}
+              <div className="mt-2 text-destructive font-medium">
+                This action cannot be undone.
+              </div>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>

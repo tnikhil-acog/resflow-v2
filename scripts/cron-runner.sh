@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Cron Job Runner Script for ResFlow Task Generation
 # This script is executed by cron inside the Docker container
@@ -9,7 +9,7 @@ if [ -f /app/.env ]; then
 fi
 
 # Set default values
-BASE_URL=${BASE_URL:-"http://localhost:3000"}
+BASE_URL=${BASE_URL:-"http://localhost:3000/"}
 CRON_API_KEY=${CRON_API_KEY:-""}
 
 # Function to call API endpoint

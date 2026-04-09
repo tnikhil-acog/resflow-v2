@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DB_CONTAINER="resflow_db"
+DB_CONTAINER="resflow-db"
 DB_USER="resflowuser"
 DB_NAME="resflowdb"
 BACKUP_DIR="backups"

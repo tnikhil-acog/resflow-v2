@@ -71,7 +71,7 @@ function ProjectPhasesContent() {
   const params = useParams();
   const projectId = params?.id as string;
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -102,9 +102,7 @@ function ProjectPhasesContent() {
 
   async function fetchProject() {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/projects?action=get&id=${projectId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/projects?action=get&id=${projectId}`, {
       });
       if (response.ok) {
         const data = await response.json();
@@ -118,9 +116,7 @@ function ProjectPhasesContent() {
   async function fetchPhases() {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/phases?project_id=${projectId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch(`/api/phases?project_id=${projectId}`, {
       });
 
       if (!response.ok) {
@@ -162,12 +158,10 @@ function ProjectPhasesContent() {
 
     try {
       setSubmitting(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/phases", {
+      const response = await authenticatedFetch("/api/phases", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           project_id: projectId,
@@ -216,12 +210,10 @@ function ProjectPhasesContent() {
 
     try {
       setSubmitting(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/phase-reports", {
+      const response = await authenticatedFetch("/api/phase-reports", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           phase_id: selectedPhase.id,

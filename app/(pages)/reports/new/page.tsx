@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { addDays, startOfWeek, endOfWeek, format } from "date-fns";
+import amplitude from "@/lib/amplitude";
 
 interface ProjectHours {
   project_code: string;
@@ -45,6 +47,7 @@ interface FormData {
 
 export default function NewReportPage() {
   const router = useRouter();
+  const { authenticatedFetch } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [fetchingHours, setFetchingHours] = useState(false);
@@ -76,14 +79,8 @@ export default function NewReportPage() {
 
     try {
       setFetchingHours(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `/api/logs?start_date=${formData.week_start_date}&end_date=${formData.week_end_date}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
       );
 
       if (!response.ok) {
@@ -211,12 +208,10 @@ export default function NewReportPage() {
           formData.report_type === "WEEKLY" ? weeklyHoursJson : null,
       };
 
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/reports", {
+      const response = await authenticatedFetch("/api/reports", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
@@ -231,6 +226,7 @@ export default function NewReportPage() {
         title: "Success",
         description: "Report submitted successfully.",
       });
+      amplitude.track("report_submitted", { report_type: formData.report_type });
 
       router.push("/reports");
     } catch (error: any) {

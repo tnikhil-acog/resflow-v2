@@ -32,6 +32,7 @@ interface ProjectComboboxProps {
   className?: string;
   showAllOption?: boolean; // Whether to show "All Projects" option
   filterProjectIds?: string[]; // Optional list of project IDs to filter by (for employees)
+  pmScope?: "managed" | "team";
 }
 
 export function ProjectCombobox({
@@ -41,6 +42,7 @@ export function ProjectCombobox({
   className,
   showAllOption = false, // Default to false
   filterProjectIds, // Optional filter
+  pmScope = "managed",
 }: ProjectComboboxProps) {
   const { user } = useAuth();
   const [open, setOpen] = React.useState(false);
@@ -83,7 +85,11 @@ export function ProjectCombobox({
 
       // If PM, filter to only their projects
       if (isPM && user?.id) {
-        params.append("project_manager_id", user.id);
+        if (pmScope === "team") {
+          params.append("pm_scope", "my_team");
+        } else {
+          params.append("project_manager_id", user.id);
+        }
       }
 
       const response = await fetch(`/api/projects?${params.toString()}`, {
@@ -115,8 +121,9 @@ export function ProjectCombobox({
         <Button
           variant="outline"
           role="combobox"
+          size="sm"
           aria-expanded={open}
-          className={cn("justify-between", className)}
+          className={cn("w-full justify-between", className)}
         >
           {showAllOption && value === "ALL"
             ? "All Projects"
@@ -126,7 +133,10 @@ export function ProjectCombobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-100 p-0" align="start">
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search projects..."

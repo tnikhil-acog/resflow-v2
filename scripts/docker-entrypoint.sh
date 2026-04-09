@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Entrypoint script for ResFlow Docker container
 # Handles both cron setup and application startup
@@ -20,11 +20,11 @@ fi
 
 # Start cron daemon in background
 echo "Starting cron daemon..."
-cron
+crond
 
 # Create log files with proper permissions
 touch /var/log/cron-daily.log /var/log/cron-weekly.log
-chmod 666 /var/log/cron-daily.log /var/log/cron-weekly.log
+chmod 644 /var/log/cron-daily.log /var/log/cron-weekly.log
 
 echo "Cron daemon started successfully"
 

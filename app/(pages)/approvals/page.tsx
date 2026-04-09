@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import amplitude from "@/lib/amplitude";
 
 interface SkillRequest {
   id: string;
@@ -69,7 +70,7 @@ export default function ApprovalsPage() {
 function ApprovalsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [activeTab, setActiveTab] = useState("skills");
   const [skillRequests, setSkillRequests] = useState<SkillRequest[]>([]);
   const [demandApprovals, setDemandApprovals] = useState<DemandApproval[]>([]);
@@ -109,9 +110,7 @@ function ApprovalsContent() {
 
   const fetchSkillRequests = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/approvals?type=skill", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/approvals?type=skill", {
       });
 
       if (!response.ok) {
@@ -130,9 +129,7 @@ function ApprovalsContent() {
 
   const fetchDemandApprovals = async () => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/approvals?type=demand", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await authenticatedFetch("/api/approvals?type=demand", {
       });
 
       if (!response.ok) {
@@ -154,7 +151,6 @@ function ApprovalsContent() {
     setProcessing(skillRequestId);
 
     try {
-      const token = localStorage.getItem("auth_token");
       const requestBody: any = {
         action: approve ? "approve" : "reject",
         employee_skill_id: skillRequestId,
@@ -165,11 +161,10 @@ function ApprovalsContent() {
         requestBody.task_id = taskId;
       }
 
-      const response = await fetch("/api/skills/approve", {
+      const response = await authenticatedFetch("/api/skills/approve", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
       });
@@ -217,7 +212,6 @@ function ApprovalsContent() {
     setProcessing(demandId);
 
     try {
-      const token = localStorage.getItem("auth_token");
 
       const requestBody: any = {
         demand_id: demandId,
@@ -229,11 +223,10 @@ function ApprovalsContent() {
         requestBody.task_id = taskId;
       }
 
-      const response = await fetch("/api/demands/approve", {
+      const response = await authenticatedFetch("/api/demands/approve", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
       });
@@ -249,6 +242,7 @@ function ApprovalsContent() {
       toast.success(
         `Demand ${action === "FULFILLED" ? "approved" : "rejected"} successfully${data.allocation_tasks_created ? ` (${data.allocation_tasks_created} allocation task(s) created)` : ""}${data.approval_tasks_completed ? ` (Task completed)` : ""}`,
       );
+      amplitude.track("demand_actioned", { action: action === "FULFILLED" ? "approved" : "rejected" });
 
       // If task was completed, navigate back to tasks page
       if (
@@ -285,18 +279,16 @@ function ApprovalsContent() {
     setBulkProcessing(true);
 
     try {
-      const token = localStorage.getItem("auth_token");
       const approvals = Array.from(selected).map((id) => ({
         id: parseInt(id),
         type,
         action: "approve" as const,
       }));
 
-      const response = await fetch("/api/approvals/bulk", {
+      const response = await authenticatedFetch("/api/approvals/bulk", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ approvals }),
       });
@@ -318,6 +310,7 @@ function ApprovalsContent() {
         toast.warning(`Approved ${successCount} items, ${errorCount} failed`);
       } else {
         toast.success(`Successfully approved ${successCount} items`);
+      amplitude.track("bulk_approved", { type, count: successCount });
       }
 
       // Clear selection and refresh
@@ -355,7 +348,6 @@ function ApprovalsContent() {
     setShowRejectDialog(false);
 
     try {
-      const token = localStorage.getItem("auth_token");
       const approvals = Array.from(selected).map((id) => ({
         id: parseInt(id),
         type: rejectType,
@@ -363,11 +355,10 @@ function ApprovalsContent() {
         rejection_reason: rejectReason,
       }));
 
-      const response = await fetch("/api/approvals/bulk", {
+      const response = await authenticatedFetch("/api/approvals/bulk", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ approvals }),
       });
@@ -389,6 +380,7 @@ function ApprovalsContent() {
         toast.warning(`Rejected ${successCount} items, ${errorCount} failed`);
       } else {
         toast.success(`Successfully rejected ${successCount} items`);
+      amplitude.track("bulk_rejected", { type: rejectType, count: successCount });
       }
 
       // Clear selection and refresh

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +49,7 @@ export default function ReportDetailPage() {
   const router = useRouter();
   const params = useParams();
   const reportId = params?.id as string;
+  const { authenticatedFetch } = useAuth();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -63,12 +65,7 @@ export default function ReportDetailPage() {
 
   async function fetchUserRole() {
     try {
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch("/api/auth/me");
       if (response.ok) {
         const data = await response.json();
         setUserRole(data.employee_role);
@@ -81,12 +78,7 @@ export default function ReportDetailPage() {
   async function fetchReportDetail() {
     try {
       setLoading(true);
-      const token = localStorage.getItem("auth_token");
-      const response = await fetch(`/api/reports/${reportId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(`/api/reports/${reportId}`);
 
       if (!response.ok) {
         if (response.status === 404) {
