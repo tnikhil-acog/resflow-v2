@@ -94,8 +94,9 @@ export function EmployeeMultiSelect({
           <Button
             variant="outline"
             role="combobox"
+            size="sm"
             aria-expanded={open}
-            className="w-full justify-between"
+            className={cn("w-full justify-between")}
             disabled={disabled}
           >
             <span className="truncate">
@@ -106,7 +107,10 @@ export function EmployeeMultiSelect({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-100 p-0">
+        <PopoverContent
+          className="w-[--radix-popover-trigger-width] p-0"
+          align="start"
+        >
           <Command>
             <CommandInput
               placeholder="Search employees..."

@@ -79,7 +79,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     echo "✅ ResFlow is now running!"
     echo ""
-    echo "🌐 Access the application at: http://localhost:3000"
+    echo "🌐 Access the application at: http://localhost:3000/"
     echo ""
     echo "📋 Useful commands:"
     echo "   - View logs: docker-compose logs -f app"

@@ -62,6 +62,12 @@ function LoginForm() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Guard against rapid double-submit while LDAP auth is still pending.
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -116,7 +122,7 @@ function LoginForm() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" aria-busy={loading}>
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -129,7 +135,7 @@ function LoginForm() {
                 <Input
                   id="username"
                   type="text"
-                  placeholder="e.g., admin.hr"
+                  placeholder="Enter your LDAP username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -152,7 +158,12 @@ function LoginForm() {
                 />
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading}
+                aria-busy={loading}
+              >
                 {loading ? (
                   <div className="flex items-center gap-2">
                     <LoadingSpinner size="sm" />

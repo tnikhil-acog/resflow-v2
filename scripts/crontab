@@ -4,7 +4,7 @@
 
 # Environment variables (loaded from .env or set in Docker)
 
-# BASE_URL=http://localhost:3000
+# BASE_URL=http://localhost:3000/
 
 # CRON_API_KEY=your-secure-api-key
 

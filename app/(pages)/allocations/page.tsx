@@ -66,6 +66,8 @@ function AllocationsListContent() {
     undefined,
   );
   const [activeOnlyFilter, setActiveOnlyFilter] = useState<string>("true");
+  const [billabilityFilter, setBillabilityFilter] = useState<string>("ALL");
+  const [utilizationFilter, setUtilizationFilter] = useState<string>("ALL");
 
   const isHR = user?.employee_role === "hr_executive";
 
@@ -76,6 +78,8 @@ function AllocationsListContent() {
     projectFilter,
     employeeFilter,
     activeOnlyFilter,
+    billabilityFilter,
+    utilizationFilter,
     searchQuery,
     currentPage,
   ]);
@@ -99,6 +103,12 @@ function AllocationsListContent() {
       if (projectFilter) params.append("project_id", projectFilter);
       if (employeeFilter) params.append("employee_id", employeeFilter);
       if (activeOnlyFilter) params.append("active_only", activeOnlyFilter);
+      if (billabilityFilter !== "ALL") {
+        params.append("billability", billabilityFilter);
+      }
+      if (utilizationFilter !== "ALL") {
+        params.append("utilization", utilizationFilter);
+      }
       if (searchQuery) params.append("search", searchQuery);
       params.append("page", currentPage.toString());
       params.append("limit", pageSize.toString());
@@ -169,7 +179,9 @@ function AllocationsListContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div
+                className={`grid grid-cols-1 gap-4 ${isHR ? "md:grid-cols-5" : "md:grid-cols-3"}`}
+              >
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Project</label>
                   <ProjectCombobox
@@ -208,6 +220,45 @@ function AllocationsListContent() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {isHR && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Billability</label>
+                    <Select
+                      value={billabilityFilter}
+                      onValueChange={setBillabilityFilter}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All billability" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All</SelectItem>
+                        <SelectItem value="true">Billable</SelectItem>
+                        <SelectItem value="false">Non-Billable</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {isHR && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Utilization</label>
+                    <Select
+                      value={utilizationFilter}
+                      onValueChange={setUtilizationFilter}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All utilization" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All</SelectItem>
+                        <SelectItem value="UTILIZED">Utilized</SelectItem>
+                        <SelectItem value="UNUTILIZED">Unutilized</SelectItem>
+                        {/* <SelectItem value="SHADOW">Shadow</SelectItem> */}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -231,6 +282,7 @@ function AllocationsListContent() {
                         <TableHead>Role</TableHead>
                         <TableHead>Allocation %</TableHead>
                         <TableHead>Billable</TableHead>
+                        {isHR && <TableHead>Utilization</TableHead>}
                         <TableHead>Duration</TableHead>
                         {isHR && (
                           <TableHead className="w-12.5">Actions</TableHead>
@@ -265,6 +317,13 @@ function AllocationsListContent() {
                               {allocation.is_billable ? "Yes" : "No"}
                             </Badge>
                           </TableCell>
+                          {isHR && (
+                            <TableCell>
+                              <Badge variant="outline">
+                                {allocation.utilization || "-"}
+                              </Badge>
+                            </TableCell>
+                          )}
                           <TableCell>
                             <div className="text-sm">
                               <div>

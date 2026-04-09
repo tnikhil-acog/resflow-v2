@@ -46,7 +46,7 @@ import { db, schema } from "@/lib/db";
 import { getCurrentUser, checkRole } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { toDateString } from "@/lib/date-utils";
-import { checkUniqueness, getCount, getPMVisibleEmployeeIds } from "@/lib/db-helpers";
+import { checkUniqueness, getCount } from "@/lib/db-helpers";
 import {
   ErrorResponses,
   validateRequiredFields,
@@ -265,9 +265,34 @@ async function handleListEmployees(
 
   const whereConditions: any[] = [];
 
-  // PM defaults to all employees; optional pm_scope=my_team restricts to team + reportees.
+  // PM team scope for dropdowns:
+  // 1) If PM manages projects, include only employees allocated to those projects.
+  // 2) If PM manages no projects, include only direct reports.
   if (user.employee_role === "project_manager" && pm_scope === "my_team") {
-    const visibleIds = await getPMVisibleEmployeeIds(user.id);
+    const managedProjects = await db
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.project_manager_id, user.id));
+
+    let visibleIds: string[] = [];
+
+    if (managedProjects.length > 0) {
+      const managedProjectIds = managedProjects.map((p) => p.id);
+      const teamMembers = await db
+        .selectDistinct({ emp_id: schema.projectAllocation.emp_id })
+        .from(schema.projectAllocation)
+        .where(inArray(schema.projectAllocation.project_id, managedProjectIds));
+      visibleIds = teamMembers.map((m) => m.emp_id);
+    } else {
+      const reportees = await db
+        .select({ id: schema.employees.id })
+        .from(schema.employees)
+        .where(eq(schema.employees.reporting_manager_id, user.id));
+      visibleIds = reportees.map((r) => r.id);
+    }
+
+    visibleIds = [...new Set(visibleIds)];
+
     if (visibleIds.length === 0) {
       return successResponse({ employees: [], total: 0, page, limit });
     }

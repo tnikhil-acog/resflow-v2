@@ -68,6 +68,18 @@ async function handleLogin(req: NextRequest) {
 
     if (!ldapResult.success) {
       console.log(`[AUTH] ✗ LDAP validation failed`);
+
+      if (ldapResult.errorCode === "SERVER_UNAVAILABLE") {
+        return NextResponse.json(
+          {
+            error:
+              ldapResult.error ||
+              "Authentication service is temporarily unavailable. Please try again.",
+          },
+          { status: 503 },
+        );
+      }
+
       return ErrorResponses.unauthorized(
         ldapResult.error || "Invalid credentials",
       );

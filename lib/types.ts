@@ -52,6 +52,7 @@ export interface Allocation {
   id: string;
   role: string;
   allocation_percentage: number;
+  utilization?: string | null;
   is_billable: boolean;
   start_date: string;
   end_date?: string;

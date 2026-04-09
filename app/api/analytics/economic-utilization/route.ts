@@ -2,30 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ErrorResponses } from "@/lib/api-helpers";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // GET /api/analytics/economic-utilization
-// Returns economic utilization metrics: billable employees vs total employees
+// Returns economic utilization metrics based on billable allocation percentages
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
 
-    // Get all billable employees (distinct employees working on economically billable projects)
-    const billableEmployeesResult = await db
-      .selectDistinct({
-        emp_id: schema.projectAllocation.emp_id,
+    // SUMIFS equivalent: sum allocation percentage where Billability = BILLABLE
+    const billableAllocationResult = await db
+      .select({
+        total: sql<string>`COALESCE(SUM(${schema.projectAllocation.allocation_percentage}), 0)`,
       })
       .from(schema.projectAllocation)
-      .leftJoin(
-        schema.projects,
-        eq(schema.projectAllocation.project_id, schema.projects.id),
-      )
-      .where(eq(schema.projects.economic_billability, true));
+      .where(eq(schema.projectAllocation.billability, true));
 
-    const billableEmployeeIds = new Set(
-      billableEmployeesResult.map((r) => r.emp_id).filter(Boolean),
+    const billableEmployeeCount = parseFloat(
+      billableAllocationResult[0]?.total || "0",
     );
-    const billableEmployeeCount = billableEmployeeIds.size;
 
     // Get total active employees
     const totalEmployeesResult = await db
@@ -41,7 +36,7 @@ export async function GET(req: NextRequest) {
     const economicUtilization =
       totalEmployeeCount > 0
         ? parseFloat(
-            ((billableEmployeeCount / totalEmployeeCount) * 100).toFixed(2),
+            (billableEmployeeCount / totalEmployeeCount).toFixed(2),
           )
         : 0;
 

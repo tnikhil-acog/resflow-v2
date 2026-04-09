@@ -443,6 +443,8 @@ export async function GET(req: NextRequest) {
     const emp_id =
       searchParams.get("employee_id") || searchParams.get("emp_id");
     const project_id = searchParams.get("project_id");
+    const billability = searchParams.get("billability");
+    const utilization = searchParams.get("utilization");
     const active_only = searchParams.get("active_only") === "true";
     const search = searchParams.get("search");
     const page = parseInt(searchParams.get("page") || "1");
@@ -481,6 +483,16 @@ export async function GET(req: NextRequest) {
       whereConditions.push(eq(schema.projectAllocation.project_id, project_id));
     }
 
+    if (billability === "true" || billability === "false") {
+      whereConditions.push(
+        eq(schema.projectAllocation.billability, billability === "true"),
+      );
+    }
+
+    if (utilization && utilization.trim()) {
+      whereConditions.push(eq(schema.projectAllocation.utilization, utilization));
+    }
+
     if (active_only) {
       const today = toDateString(new Date())!;
       whereConditions.push(
@@ -503,7 +515,8 @@ export async function GET(req: NextRequest) {
           LOWER(${schema.employees.employee_code}) LIKE ${searchTerm} OR
           LOWER(${schema.projects.project_name}) LIKE ${searchTerm} OR
           LOWER(${schema.projects.project_code}) LIKE ${searchTerm} OR
-          LOWER(${schema.projectAllocation.role}) LIKE ${searchTerm}
+          LOWER(${schema.projectAllocation.role}) LIKE ${searchTerm} OR
+          LOWER(COALESCE(${schema.projectAllocation.utilization}, '')) LIKE ${searchTerm}
         )`,
       );
     }
@@ -540,6 +553,7 @@ export async function GET(req: NextRequest) {
         allocation_percentage: schema.projectAllocation.allocation_percentage,
         start_date: schema.projectAllocation.start_date,
         end_date: schema.projectAllocation.end_date,
+        utilization: schema.projectAllocation.utilization,
         is_billable: schema.projectAllocation.billability,
         assigned_by: schema.projectAllocation.assigned_by,
       })
