@@ -1,0 +1,22 @@
+# PostgreSQL Docker Setup
+FROM postgres:16
+
+# Set environment variables
+ENV POSTGRES_DB=resflowdb
+ENV POSTGRES_USER=resflowuser
+ENV POSTGRES_PASSWORD=changeme
+
+# Enable WAL logging for backups
+RUN echo "wal_level = replica" >> /usr/share/postgresql/postgresql.conf.sample && \
+    echo "archive_mode = on" >> /usr/share/postgresql/postgresql.conf.sample && \
+    echo "archive_command = 'cp %p /backups/wal/%f'" >> /usr/share/postgresql/postgresql.conf.sample
+
+# Create backup directories
+RUN mkdir -p /backups/daily /backups/wal
+
+# Expose PostgreSQL port
+EXPOSE 5432
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD pg_isready -U resflowuser -d resflowdb || exit 1
