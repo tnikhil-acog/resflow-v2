@@ -23,6 +23,9 @@ interface Manager {
   full_name: string;
 }
 
+const isManagerRole = (role?: string) =>
+  role === "project_manager" || role === "hr_executive" || role === "PM" || role === "HR";
+
 interface EmployeeFormData {
   employee_code: string;
   ldap_username: string;
@@ -141,16 +144,21 @@ function EditEmployeeContent() {
         setDepartments(deptData.departments || []);
       }
 
+      // Fetch a large active employee list so manager filtering is complete.
+      const managersParams = new URLSearchParams({
+        limit: "999",
+        status: "ACTIVE",
+      });
+
       // Fetch managers
-      const managersResponse = await authenticatedFetch("/api/employees", {
+      const managersResponse = await authenticatedFetch(`/api/employees?${managersParams.toString()}`, {
       });
 
       if (managersResponse.ok) {
         const managersData = await managersResponse.json();
         const managersList = (managersData.employees || []).filter(
           (emp: any) =>
-            (emp.employee_role === "project_manager" ||
-              emp.employee_role === "hr_executive") &&
+            isManagerRole(emp.employee_role) &&
             emp.id !== employeeId,
         );
         setManagers(managersList);

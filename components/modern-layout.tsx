@@ -19,7 +19,12 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
@@ -387,6 +392,7 @@ export function ModernLayout({
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-64 p-0">
+          <SheetTitle className="sr-only">Mobile navigation</SheetTitle>
           <div className="flex h-full flex-col">
             <div className="flex h-16 items-center border-b px-6">
               <h1 className="text-xl font-bold text-primary">ResFlow</h1>

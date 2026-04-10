@@ -12,13 +12,13 @@ services:
       POSTGRES_DB: resflowdb
       POSTGRES_USER: resflowuser
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
       - ./backups:/backups
       - ./data:/data
-    ports:
-      - "5432:5432"
     networks:
       - resflow-network
     healthcheck:
@@ -35,6 +35,7 @@ services:
     labels:
       user: "tnikhil"
       description: "ResFlow Next.js application and API service"
+      security: none
     restart: unless-stopped
     depends_on:
       db:
@@ -43,7 +44,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://resflowuser:${POSTGRES_PASSWORD:-changeme}@db:5432/resflowdb
       JWT_SECRET: ${JWT_SECRET:-resflowsecret}
-      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      BASE_URL: ${BASE_URL:-http://http://localhost:3000/}
       CRON_API_KEY: ${CRON_API_KEY:-}
       LDAP_URI: ${LDAP_URI:-}
       LDAP_USER_DN: ${LDAP_USER_DN:-}
@@ -52,8 +53,10 @@ services:
       LDAP_BASE_DN: ou=people,dc=aganitha,dc=ai
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/google-callback}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://http://localhost:3000//google-callback}
       GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-aganitha.ai}
+    ports:
+      - "3000:3000"
     volumes:
       - cron_logs:/var/log
     networks:
