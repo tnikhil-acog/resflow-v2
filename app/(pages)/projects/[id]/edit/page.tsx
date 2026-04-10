@@ -30,6 +30,7 @@ interface Manager {
 
 interface ProjectFormData {
   project_code: string;
+  project_type: string;
   project_name: string;
   client_id: string | undefined;
   project_manager_id: string | undefined;
@@ -64,6 +65,7 @@ function EditProjectContent() {
 
   const [formData, setFormData] = useState<ProjectFormData>({
     project_code: "",
+    project_type: "",
     project_name: "",
     client_id: undefined,
     project_manager_id: undefined,
@@ -109,6 +111,7 @@ function EditProjectContent() {
 
       setFormData({
         project_code: projectData.project_code || "",
+        project_type: projectData.project_type || "",
         project_name: projectData.project_name || "",
         client_id: projectData.client_id || undefined,
         project_manager_id: projectData.project_manager_id || undefined,
@@ -239,12 +242,13 @@ function EditProjectContent() {
         status: formData.status,
       };
 
-      // HR can update additional fields
+      // HR can update additional fields (project_type triggers code regen server-side)
       if (isHR) {
         payload.project_name = formData.project_name.trim();
         payload.client_id = formData.client_id;
         payload.project_manager_id = formData.project_manager_id;
         payload.started_on = formData.started_on;
+        payload.project_type = formData.project_type;
       }
 
       const response = await authenticatedFetch("/api/projects", {

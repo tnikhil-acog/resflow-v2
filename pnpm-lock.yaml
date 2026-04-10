@@ -137,6 +137,9 @@ importers:
       pg:
         specifier: ^8.17.2
         version: 8.17.2
+      pnpm:
+        specifier: ^10.33.0
+        version: 10.33.0
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -2277,6 +2280,11 @@ packages:
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
+  pnpm@10.33.0:
+    resolution: {integrity: sha512-EFaLtKavtYyes2MNqQzJUWQXq+vT+rvmc58K55VyjaFJHp21pUTHatjrdXD1xLs9bGN7LLQb/c20f6gjyGSTGQ==}
+    engines: {node: '>=18.12'}
+    hasBin: true
+
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
@@ -4298,6 +4306,8 @@ snapshots:
       split2: 4.2.0
 
   picocolors@1.1.1: {}
+
+  pnpm@10.33.0: {}
 
   postcss-value-parser@4.2.0: {}
 

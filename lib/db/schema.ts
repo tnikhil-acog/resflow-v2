@@ -128,11 +128,18 @@ export const employees = pgTable(
 
 /* ================= CLIENTS ================= */
 
-export const clients = pgTable("clients", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  client_name: varchar("client_name", { length: 255 }).notNull().unique(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
-});
+export const clients = pgTable(
+  "clients",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    client_name: varchar("client_name", { length: 255 }).notNull().unique(),
+    client_code: varchar("client_code", { length: 20 }).unique(),
+    created_at: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    codeIdx: index("clients_code_idx").on(t.client_code),
+  }),
+);
 
 /* ================= PROJECTS ================= */
 

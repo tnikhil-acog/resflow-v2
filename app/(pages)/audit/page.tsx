@@ -145,7 +145,11 @@ function ChangedFieldsDisplay({
               value !== null &&
               typeof value === "object" &&
               !Array.isArray(value) &&
-              ("old" in value || "new" in value);
+              ("from" in value || "to" in value || "old" in value || "new" in value);
+
+            // Normalise both { from/to } and { old/new } to a common shape
+            const fromVal = isDiff ? (value.from ?? value.old ?? null) : null;
+            const toVal   = isDiff ? (value.to   ?? value.new  ?? null) : null;
 
             return (
               <tr key={key} className="border-t">
@@ -154,12 +158,14 @@ function ChangedFieldsDisplay({
                 </td>
                 <td className="p-2">
                   {isDiff ? (
-                    <span className="flex items-center gap-2">
-                      <span className="line-through text-muted-foreground">
-                        {formatValue(value.old)}
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span className="line-through text-muted-foreground font-mono text-xs">
+                        {formatValue(fromVal)}
                       </span>
                       <span className="text-muted-foreground">→</span>
-                      <span className="font-medium">{formatValue(value.new)}</span>
+                      <span className="font-semibold font-mono text-xs text-foreground">
+                        {formatValue(toVal)}
+                      </span>
                     </span>
                   ) : (
                     formatValue(value)

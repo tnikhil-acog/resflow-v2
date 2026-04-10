@@ -4,6 +4,7 @@ import { getCurrentUser, checkRole } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { toDateString } from "@/lib/date-utils";
 import { eq, and, or, lte, gte, sql, sum, ne, inArray } from "drizzle-orm";
+import { resolvePMScope } from "@/lib/pm-scope";
 
 async function handleGetAllocation(req: NextRequest, user: any, id: string) {
   // Check permissions
@@ -443,6 +444,7 @@ export async function GET(req: NextRequest) {
     const emp_id =
       searchParams.get("employee_id") || searchParams.get("emp_id");
     const project_id = searchParams.get("project_id");
+    const pm_id = searchParams.get("pm_id");  // filter by project manager
     const billability = searchParams.get("billability");
     const utilization = searchParams.get("utilization");
     const active_only = searchParams.get("active_only") === "true";
@@ -457,21 +459,26 @@ export async function GET(req: NextRequest) {
     if (user.employee_role === "employee") {
       whereConditions.push(eq(schema.projectAllocation.emp_id, user.id));
     } else if (user.employee_role === "project_manager") {
-      const managedProjects = await db
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(eq(schema.projects.project_manager_id, user.id));
-
-      const projectIds = managedProjects.map((p) => p.id);
-      if (projectIds.length === 0) {
+      // PM sees allocations for their full scope:
+      // union of project team members + direct reportees
+      const { empIds } = await resolvePMScope(user.id);
+      if (empIds.length === 0) {
         return NextResponse.json({ allocations: [], total: 0, page, limit });
       }
-      whereConditions.push(
-        inArray(schema.projectAllocation.project_id, projectIds),
-      );
+      whereConditions.push(inArray(schema.projectAllocation.emp_id, empIds));
     }
 
-    // Additional filters
+    // PM filter — always uses empIds (union of project team + direct reportees)
+    // so PMs who both own projects AND have reportees outside those projects
+    // are handled correctly.
+    if (pm_id) {
+      const { empIds } = await resolvePMScope(pm_id);
+      if (empIds.length === 0) {
+        return NextResponse.json({ allocations: [], total: 0, page, limit });
+      }
+      whereConditions.push(inArray(schema.projectAllocation.emp_id, empIds));
+    }
+
     if (emp_id) {
       if (user.employee_role === "employee" && emp_id !== user.id) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 });

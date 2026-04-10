@@ -55,6 +55,7 @@ import {
   validateDateOrder,
 } from "@/lib/api-helpers";
 import { eq, and, or, gt, ne, sql, inArray } from "drizzle-orm";
+import { resolvePMScope } from "@/lib/pm-scope";
 
 export async function POST(req: NextRequest) {
   try {
@@ -261,42 +262,29 @@ async function handleListEmployees(
   const role = searchParams.get("role");
   const search = searchParams.get("search");
   const pm_scope = searchParams.get("pm_scope");
+  const pm_id = searchParams.get("pm_id"); // filter employees by their project manager
   const { page, limit, offset } = getPaginationParams(new URL(req.url));
 
   const whereConditions: any[] = [];
 
-  // PM team scope for dropdowns:
-  // 1) If PM manages projects, include only employees allocated to those projects.
-  // 2) If PM manages no projects, include only direct reports.
+  // PM viewing their own team: union of project team members + direct reportees
   if (user.employee_role === "project_manager" && pm_scope === "my_team") {
-    const managedProjects = await db
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(eq(schema.projects.project_manager_id, user.id));
-
-    let visibleIds: string[] = [];
-
-    if (managedProjects.length > 0) {
-      const managedProjectIds = managedProjects.map((p) => p.id);
-      const teamMembers = await db
-        .selectDistinct({ emp_id: schema.projectAllocation.emp_id })
-        .from(schema.projectAllocation)
-        .where(inArray(schema.projectAllocation.project_id, managedProjectIds));
-      visibleIds = teamMembers.map((m) => m.emp_id);
-    } else {
-      const reportees = await db
-        .select({ id: schema.employees.id })
-        .from(schema.employees)
-        .where(eq(schema.employees.reporting_manager_id, user.id));
-      visibleIds = reportees.map((r) => r.id);
-    }
-
-    visibleIds = [...new Set(visibleIds)];
-
-    if (visibleIds.length === 0) {
+    const { empIds } = await resolvePMScope(user.id);
+    if (empIds.length === 0) {
       return successResponse({ employees: [], total: 0, page, limit });
     }
-    whereConditions.push(inArray(schema.employees.id, visibleIds));
+    whereConditions.push(inArray(schema.employees.id, empIds));
+  }
+
+  // Filter employees by project manager — handles both PM types:
+  // - Project-owning PM: shows employees allocated to their projects
+  // - Reporting-only PM: shows their direct reportees
+  if (pm_id) {
+    const { empIds, mode } = await resolvePMScope(pm_id);
+    if (empIds.length === 0) {
+      return successResponse({ employees: [], total: 0, page, limit });
+    }
+    whereConditions.push(inArray(schema.employees.id, empIds));
   }
 
   if (status) {

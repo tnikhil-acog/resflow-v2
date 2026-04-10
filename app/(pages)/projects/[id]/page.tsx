@@ -36,6 +36,7 @@ import {
   FolderKanban,
 } from "lucide-react";
 import { LoadingPage } from "@/components/loading-spinner";
+import { ProjectCodeJourney } from "@/components/project-code-journey";
 
 interface ProjectDetails {
   id: string;
@@ -580,6 +581,9 @@ function ProjectDetailContent() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Code Journey Timeline */}
+            <ProjectCodeJourney projectId={projectId} />
           </div>
         </div>
       </div>

@@ -51,7 +51,6 @@ function AllocationsListContent() {
   const { user, authenticatedFetch } = useAuth();
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // Search and pagination state
   const [searchInput, setSearchInput] = useState("");
@@ -66,6 +65,8 @@ function AllocationsListContent() {
   const [employeeFilter, setEmployeeFilter] = useState<string | undefined>(
     undefined,
   );
+  const [pmFilter, setPmFilter] = useState<string | undefined>(undefined);
+  const [managers, setManagers] = useState<{ id: string; full_name: string }[]>([]);
   const [activeOnlyFilter, setActiveOnlyFilter] = useState<string>("true");
   const [billabilityFilter, setBillabilityFilter] = useState<string>("ALL");
   const [utilizationFilter, setUtilizationFilter] = useState<string>("ALL");
@@ -78,12 +79,29 @@ function AllocationsListContent() {
   }, [
     projectFilter,
     employeeFilter,
+    pmFilter,
     activeOnlyFilter,
     billabilityFilter,
     utilizationFilter,
     searchQuery,
     currentPage,
   ]);
+
+  useEffect(() => {
+    fetchProjectManagers();
+  }, []);
+
+  const fetchProjectManagers = async () => {
+    try {
+      const resp = await authenticatedFetch("/api/employees?role=PM&status=ACTIVE&limit=200");
+      if (resp.ok) {
+        const data = await resp.json();
+        setManagers(data.employees || []);
+      }
+    } catch (e) {
+      console.error("Error fetching PMs:", e);
+    }
+  };
 
   const handleSearch = () => {
     setSearchQuery(searchInput);
@@ -103,6 +121,7 @@ function AllocationsListContent() {
 
       if (projectFilter) params.append("project_id", projectFilter);
       if (employeeFilter) params.append("employee_id", employeeFilter);
+      if (pmFilter) params.append("pm_id", pmFilter);
       if (activeOnlyFilter) params.append("active_only", activeOnlyFilter);
       if (billabilityFilter !== "ALL") {
         params.append("billability", billabilityFilter);
@@ -129,11 +148,10 @@ function AllocationsListContent() {
       toast.error("Failed to load allocations");
     } finally {
       setLoading(false);
-      setHasLoadedOnce(true);
     }
   };
 
-  if (loading && !hasLoadedOnce) return <LoadingPage />;
+  if (loading) return <LoadingPage />;
 
   return (
     <div className="min-h-screen bg-background">
@@ -182,7 +200,7 @@ function AllocationsListContent() {
               </div>
 
               <div
-                className={`grid grid-cols-1 gap-4 ${isHR ? "md:grid-cols-5" : "md:grid-cols-3"}`}
+                className={`grid grid-cols-1 gap-4 ${isHR ? "md:grid-cols-6" : "md:grid-cols-4"}`}
               >
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Project</label>
@@ -197,14 +215,36 @@ function AllocationsListContent() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-sm font-medium">Project Manager</label>
+                  <Select
+                    value={pmFilter || "all"}
+                    onValueChange={(value) => {
+                      setPmFilter(value === "all" ? undefined : value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All managers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Managers</SelectItem>
+                      {managers.map((pm) => (
+                        <SelectItem key={pm.id} value={pm.id}>
+                          {pm.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-sm font-medium">Employee</label>
                   <EmployeeCombobox
-                    value={employeeFilter || "ALL"}
+                    value={employeeFilter}
                     onValueChange={(v) =>
-                      setEmployeeFilter(v === "ALL" || v === "" ? undefined : v)
+                      setEmployeeFilter(v === "" ? undefined : v)
                     }
                     placeholder="All employees"
-                    showAllOption={true}
                   />
                 </div>
 

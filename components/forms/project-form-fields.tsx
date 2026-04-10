@@ -23,7 +23,7 @@ interface Manager {
 }
 
 interface ProjectFormData {
-  project_code: string;
+  project_type: string;
   project_name: string;
   client_id: string | undefined;
   project_manager_id: string | undefined;
@@ -33,6 +33,8 @@ interface ProjectFormData {
   github_url?: string;
   started_on: string;
   status?: string | undefined;
+  // read-only display fields
+  project_code?: string;
 }
 
 interface ProjectFormFieldsProps {
@@ -69,25 +71,54 @@ export function ProjectFormFields({
           <h3 className="text-lg font-semibold">Basic Information</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Project Code — read-only, auto-generated */}
             <div className="space-y-2">
-              <Label htmlFor="project_code">
-                Project Code <span className="text-destructive">*</span>
+              <Label htmlFor="project_code">Project Code</Label>
+              {isEdit && formData.project_code ? (
+                <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm font-mono text-muted-foreground">
+                  {formData.project_code}
+                </div>
+              ) : (
+                <div className="flex h-10 items-center rounded-md border border-dashed bg-muted/50 px-3 text-sm text-muted-foreground italic">
+                  Auto-generated on save
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Format: ClientCode-Year-Type+Seq (e.g. CL001-2025-E001)
+              </p>
+            </div>
+
+            {/* Project Type — required */}
+            <div className="space-y-2">
+              <Label htmlFor="project_type">
+                Project Type <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="project_code"
-                value={formData.project_code}
-                onChange={(e) => onChange("project_code", e.target.value)}
-                disabled={isEdit || disabled}
-                placeholder="e.g., PRJ001"
-              />
-              {errors.project_code && (
-                <p className="text-sm text-destructive">
-                  {errors.project_code}
-                </p>
+              <Select
+                value={formData.project_type || undefined}
+                onValueChange={(value) => onChange("project_type", value)}
+                disabled={disabled}
+              >
+                <SelectTrigger id="project_type">
+                  <SelectValue placeholder="Select project type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="B">B — Bench</SelectItem>
+                  <SelectItem value="C">C — Signed Customer Project</SelectItem>
+                  <SelectItem value="E">E — Eager (Unsigned)</SelectItem>
+                  <SelectItem value="M01">M01 — Business Development (Group 1)</SelectItem>
+                  <SelectItem value="M02">M02 — Business Development (Group 2)</SelectItem>
+                  <SelectItem value="O">O — Overheads / Internal Ops</SelectItem>
+                  <SelectItem value="P">P — Product / Platform</SelectItem>
+                  <SelectItem value="R">R — Research</SelectItem>
+                  <SelectItem value="S">S — Solutioning</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.project_type && (
+                <p className="text-sm text-destructive">{errors.project_type}</p>
               )}
               {isEdit && (
                 <p className="text-xs text-muted-foreground">
-                  Cannot be changed after creation
+                  Changing type will auto-update the project code
                 </p>
               )}
             </div>

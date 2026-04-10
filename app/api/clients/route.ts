@@ -7,6 +7,7 @@ import {
   validateRequiredFields,
   successResponse,
 } from "@/lib/api-helpers";
+import { generateClientCode } from "@/lib/project-code-rules";
 import { eq, sql } from "drizzle-orm";
 
 // GET /api/clients
@@ -44,6 +45,7 @@ async function handleListClients(req: NextRequest) {
       .select({
         id: schema.clients.id,
         client_name: schema.clients.client_name,
+        client_code: schema.clients.client_code,
         created_at: schema.clients.created_at,
         project_count: sql<number>`COUNT(DISTINCT ${schema.projects.id})::int`,
       })
@@ -55,11 +57,33 @@ async function handleListClients(req: NextRequest) {
       .groupBy(
         schema.clients.id,
         schema.clients.client_name,
+        schema.clients.client_code,
         schema.clients.created_at,
       )
-      .orderBy(schema.clients.client_name);
+      .orderBy(schema.clients.client_code);
 
-    return successResponse({ clients });
+    // Count projects with no client (IN001 / internal)
+    const [internalCount] = await db
+      .select({
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(schema.projects)
+      .where(sql`${schema.projects.client_id} IS NULL`);
+
+    // Append the virtual Internal row at the end
+    const allClients = [
+      ...clients,
+      {
+        id: "internal",
+        client_name: "Internal",
+        client_code: "IN001",
+        created_at: null as any,
+        project_count: internalCount?.count ?? 0,
+      },
+    ];
+
+    return successResponse({ clients: allClients });
+
   } catch (error) {
     if (error instanceof Error && error.message.includes("token")) {
       return ErrorResponses.unauthorized("Invalid or expired token");
@@ -113,6 +137,7 @@ async function handleGetClient(req: NextRequest) {
     return successResponse({
       id: client.id,
       client_name: client.client_name,
+      client_code: client.client_code,
       created_at: client.created_at,
       projects,
     });
@@ -150,7 +175,7 @@ async function handleCreateClient(req: NextRequest) {
     // Check client_name uniqueness
     const isUnique = await checkUniqueness(
       schema.clients,
-      "client_name",
+      schema.clients.client_name,
       client_name,
     );
 
@@ -158,11 +183,15 @@ async function handleCreateClient(req: NextRequest) {
       return ErrorResponses.conflict("client_name already exists");
     }
 
+    // Auto-generate next sequential CL code
+    const client_code = await generateClientCode();
+
     // Insert new client
     const [newClient] = await db
       .insert(schema.clients)
       .values({
         client_name,
+        client_code,
       })
       .returning();
 
@@ -170,6 +199,7 @@ async function handleCreateClient(req: NextRequest) {
       {
         id: newClient.id,
         client_name: newClient.client_name,
+        client_code: newClient.client_code,
         created_at: newClient.created_at,
       },
       201,

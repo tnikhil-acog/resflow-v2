@@ -18,6 +18,7 @@ import { LoadingSpinner } from "@/components/loading-spinner";
 interface Client {
   id: string;
   client_name: string;
+  client_code: string | null;
   created_at: string;
   project_count?: number;
 }
@@ -60,18 +61,41 @@ export function ClientsTab() {
 
   const columns: Column<Client>[] = [
     {
-      key: "client_name",
-      header: "Client Name",
+      key: "client_code",
+      header: "Client Code",
+      render: (client) => (
+        <span
+          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-mono font-semibold ${
+            client.client_code === "IN001"
+              ? "bg-muted text-muted-foreground"
+              : "bg-primary/10 text-primary"
+          }`}
+        >
+          {client.client_code ?? "—"}
+        </span>
+      ),
     },
     {
-      key: "created_at",
-      header: "Created At",
-      render: (client) => new Date(client.created_at).toLocaleDateString(),
+      key: "client_name",
+      header: "Client Name",
+      render: (client) => (
+        <span className={client.client_code === "IN001" ? "text-muted-foreground italic" : ""}>
+          {client.client_name}
+        </span>
+      ),
     },
     {
       key: "project_count",
       header: "Projects",
       render: (client) => client.project_count || 0,
+    },
+    {
+      key: "created_at",
+      header: "Added On",
+      render: (client) =>
+        client.created_at
+          ? new Date(client.created_at).toLocaleDateString()
+          : "—",
     },
   ];
 
@@ -103,7 +127,7 @@ export function ClientsTab() {
             data={clients}
             columns={columns}
             searchPlaceholder="Search clients..."
-            searchKeys={["client_name"]}
+            searchKeys={["client_name", "client_code"]}
             emptyMessage="No clients found"
           />
         </CardContent>

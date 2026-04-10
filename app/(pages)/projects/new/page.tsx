@@ -28,7 +28,7 @@ interface Manager {
 }
 
 interface ProjectFormData {
-  project_code: string;
+  project_type: string;
   project_name: string;
   client_id: string | undefined;
   project_manager_id: string | undefined;
@@ -56,7 +56,7 @@ function NewProjectContent() {
   const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState<ProjectFormData>({
-    project_code: "",
+    project_type: "",
     project_name: "",
     client_id: undefined,
     project_manager_id: undefined,
@@ -133,8 +133,8 @@ function NewProjectContent() {
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.project_code.trim()) {
-      newErrors.project_code = "Project code is required";
+    if (!formData.project_type) {
+      newErrors.project_type = "Project type is required";
     }
 
     if (!formData.project_name.trim()) {
@@ -164,16 +164,9 @@ function NewProjectContent() {
     setSubmitting(true);
 
     try {
-
-      // Extract project type from first letter of project code (in uppercase)
-      const projectType = formData.project_code.trim().charAt(0).toUpperCase();
-      console.log("Project Code:", formData.project_code.trim());
-      console.log("Extracted Project Type:", projectType);
-
       const payload: any = {
-        project_code: formData.project_code.trim(),
         project_name: formData.project_name.trim(),
-        project_type: projectType,
+        project_type: formData.project_type,
         project_manager_id: formData.project_manager_id,
         started_on: formData.started_on,
       };
@@ -192,13 +185,9 @@ function NewProjectContent() {
         payload.pitch_deck_url = formData.pitch_deck_url.trim();
       if (formData.github_url) payload.github_url = formData.github_url.trim();
 
-      console.log("Create Project Payload:", payload);
-
       const response = await authenticatedFetch("/api/projects", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -208,20 +197,15 @@ function NewProjectContent() {
         throw new Error(result.error || "Failed to create project");
       }
 
-      toast.success(`Project ${formData.project_name} created successfully`);
+      toast.success(
+        `Project ${formData.project_name} created successfully — Code: ${result.project_code}`,
+      );
       router.push(`/projects/${result.id}`);
     } catch (error) {
       console.error("Error creating project:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to create project";
       toast.error(errorMessage);
-
-      if (errorMessage.includes("project_code")) {
-        setErrors((prev) => ({
-          ...prev,
-          project_code: "Project code already exists",
-        }));
-      }
     } finally {
       setSubmitting(false);
     }

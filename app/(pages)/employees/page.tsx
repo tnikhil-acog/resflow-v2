@@ -77,6 +77,7 @@ function EmployeesListContent() {
   const [projectFilter, setProjectFilter] = useState<string | undefined>(
     undefined,
   );
+  const [pmFilter, setPmFilter] = useState<string | undefined>(undefined);
 
   // Exit modal
   const [exitModalOpen, setExitModalOpen] = useState(false);
@@ -91,7 +92,7 @@ function EmployeesListContent() {
   // Fetch when filters or pagination changes
   useEffect(() => {
     setCurrentPage(1); // Reset to page 1 when filters change
-  }, [statusFilter, departmentFilter, roleFilter, searchQuery, projectFilter]);
+  }, [statusFilter, departmentFilter, roleFilter, searchQuery, projectFilter, pmFilter]);
 
   useEffect(() => {
     fetchDepartments();
@@ -99,6 +100,9 @@ function EmployeesListContent() {
     fetchTotalCount();
     if (isPM) {
       fetchPMProjects();
+    }
+    if (isHR) {
+      fetchProjectManagers();
     }
   }, []);
 
@@ -112,6 +116,7 @@ function EmployeesListContent() {
     roleFilter,
     searchQuery,
     projectFilter,
+    pmFilter,
   ]);
 
   const fetchActiveCount = async () => {
@@ -153,6 +158,20 @@ function EmployeesListContent() {
       }
     } catch (error) {
       console.error("Error fetching departments:", error);
+    }
+  };
+
+  const [managers, setManagers] = useState<{ id: string; full_name: string }[]>([]);
+
+  const fetchProjectManagers = async () => {
+    try {
+      const response = await authenticatedFetch("/api/employees?role=PM&status=ACTIVE&limit=200");
+      if (response.ok) {
+        const data = await response.json();
+        setManagers(data.employees || []);
+      }
+    } catch (error) {
+      console.error("Error fetching project managers:", error);
     }
   };
 
@@ -259,6 +278,7 @@ function EmployeesListContent() {
         if (isPM && projectFilter === PM_TEAM_FILTER_VALUE) {
           params.append("pm_scope", "my_team");
         }
+        if (pmFilter) params.append("pm_id", pmFilter);
         params.append("page", currentPage.toString());
         params.append("limit", pageSize.toString());
 
@@ -565,6 +585,30 @@ function EmployeesListContent() {
                 </SelectContent>
               </Select>
             </div>
+
+            {isHR && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Project Manager</label>
+                <Select
+                  value={pmFilter || "all"}
+                  onValueChange={(value) =>
+                    setPmFilter(value === "all" ? undefined : value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All managers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Managers</SelectItem>
+                    {managers.map((pm) => (
+                      <SelectItem key={pm.id} value={pm.id}>
+                        {pm.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {isPM && (
               <div className="space-y-2 min-w-0">

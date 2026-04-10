@@ -81,6 +81,11 @@ import {
   validateStatusTransition,
   getAllowedStatusTransitions,
 } from "@/lib/api-helpers";
+import {
+  getClientCode,
+  generateProjectCode,
+  extractSeqNum,
+} from "@/lib/project-code-rules";
 import { eq, and, gt, inArray, sql } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
@@ -93,32 +98,27 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const {
-      project_code,
       project_name,
+      project_type,
       client_id,
       project_manager_id,
       started_on,
     } = body;
 
-    // Validate required fields
+    // Validate required fields (project_code is now server-generated)
     const missingFields = validateRequiredFields(body, [
-      "project_code",
       "project_name",
+      "project_type",
       "project_manager_id",
     ]);
     if (missingFields) {
       return ErrorResponses.badRequest(missingFields);
     }
 
-    // Check uniqueness
-    const isCodeUnique = await checkUniqueness(
-      schema.projects,
-      schema.projects.project_code,
-      project_code,
-    );
-    if (!isCodeUnique) {
-      return ErrorResponses.conflict("project_code already exists");
-    }
+    // Generate project code server-side
+    const clientCode = await getClientCode(client_id);
+    const year = new Date().getFullYear();
+    const project_code = await generateProjectCode(clientCode, year, project_type);
 
     // Insert project
     const [project] = await db
@@ -126,7 +126,8 @@ export async function POST(req: NextRequest) {
       .values({
         project_code,
         project_name,
-        client_id,
+        project_type,
+        client_id: client_id ?? null,
         project_manager_id,
         status: "DRAFT",
         started_on: started_on ? toDateString(started_on) : null,
@@ -146,6 +147,7 @@ export async function POST(req: NextRequest) {
         id: project.id,
         project_code: project.project_code,
         project_name: project.project_name,
+        project_type: project.project_type,
         client_id: project.client_id,
         project_manager_id: project.project_manager_id,
         status: project.status,
@@ -436,11 +438,11 @@ export async function PUT(req: NextRequest) {
 
       // Check for restricted fields
       const restrictedFields = [
-        "project_code",
         "project_name",
         "client_id",
         "project_manager_id",
         "started_on",
+        "project_type",
       ];
       for (const field of restrictedFields) {
         if (body[field] !== undefined) {
@@ -463,9 +465,9 @@ export async function PUT(req: NextRequest) {
         }
       }
     } else if (user.employee_role === "hr_executive") {
-      // HR cannot update project_code
+      // HR cannot manually set project_code
       if (project_code !== undefined) {
-        return ErrorResponses.badRequest("Cannot update project_code");
+        return ErrorResponses.badRequest("Cannot update project_code directly. Change project_type to trigger code regeneration.");
       }
 
       // Validate status transition if status is being changed
@@ -485,7 +487,6 @@ export async function PUT(req: NextRequest) {
     const updateData: any = { updated_at: new Date() };
 
     if (project_name !== undefined) updateData.project_name = project_name;
-    if (client_id !== undefined) updateData.client_id = client_id;
     if (short_description !== undefined)
       updateData.short_description = short_description;
     if (long_description !== undefined)
@@ -499,19 +500,74 @@ export async function PUT(req: NextRequest) {
     if (started_on !== undefined)
       updateData.started_on = toDateString(started_on);
 
+    // HR only: handle client_id and project_type changes
+    if (user.employee_role === "hr_executive") {
+      if (client_id !== undefined) updateData.client_id = client_id;
+
+      // If project_type is changing, regenerate the project code
+      const newType = body.project_type;
+      if (newType !== undefined && newType !== currentProject.project_type) {
+        // Resolve client code (might have changed too)
+        const effectiveClientId = client_id ?? currentProject.client_id;
+        const clientCode = await getClientCode(effectiveClientId);
+        const year = new Date().getFullYear();
+        // Try to preserve the current sequence number
+        const currentSeq = extractSeqNum(currentProject.project_code);
+        const newCode = await generateProjectCode(
+          clientCode,
+          year,
+          newType,
+          currentSeq ?? undefined,
+        );
+        updateData.project_type = newType;
+        updateData.project_code = newCode;
+      } else if (newType !== undefined) {
+        updateData.project_type = newType;
+      }
+    }
+
     const [updated] = await db
       .update(schema.projects)
       .set(updateData)
       .where(eq(schema.projects.id, id))
       .returning();
 
+    // Build structured diff for audit log: { field: { from: oldValue, to: newValue } }
+    // This is what allows the audit UI to show "changed FROM X TO Y" for every field.
+    const auditDiff: Record<string, { from: any; to: any }> = {};
+    const auditableFields = [
+      "project_name",
+      "project_code",
+      "project_type",
+      "client_id",
+      "project_manager_id",
+      "status",
+      "started_on",
+      "short_description",
+      "long_description",
+      "pitch_deck_url",
+      "github_url",
+    ] as const;
+
+    for (const field of auditableFields) {
+      if (updateData[field] !== undefined) {
+        const oldVal = (currentProject as any)[field];
+        const newVal = updateData[field];
+        // Only record if value actually changed
+        if (String(oldVal ?? "") !== String(newVal ?? "")) {
+          auditDiff[field] = { from: oldVal ?? null, to: newVal };
+        }
+      }
+    }
+
     await createAuditLog({
       entity_type: "PROJECT",
       entity_id: id,
       operation: "UPDATE",
       changed_by: user.id,
-      changed_fields: updateData,
+      changed_fields: auditDiff,
     });
+
 
     return successResponse({
       id: updated.id,

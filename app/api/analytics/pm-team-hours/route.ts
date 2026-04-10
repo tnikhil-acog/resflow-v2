@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ErrorResponses } from "@/lib/api-helpers";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { resolvePMScope } from "@/lib/pm-scope";
 
 // GET /api/analytics/pm-team-hours
 // Returns hours logged this week per team member, for the PM's projects.
@@ -28,27 +29,7 @@ export async function GET(req: NextRequest) {
     sunday.setDate(monday.getDate() + 6);
     const weekStart = monday.toISOString().split("T")[0];
     const weekEnd = sunday.toISOString().split("T")[0];
-    const managedProjects = await db
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(eq(schema.projects.project_manager_id, user.id));
-
-    let scopedEmpIds: string[] = [];
-
-    if (managedProjects.length > 0) {
-      const managedProjectIds = managedProjects.map((p) => p.id);
-      const teamMembers = await db
-        .selectDistinct({ emp_id: schema.projectAllocation.emp_id })
-        .from(schema.projectAllocation)
-        .where(inArray(schema.projectAllocation.project_id, managedProjectIds));
-      scopedEmpIds = teamMembers.map((m) => m.emp_id);
-    } else {
-      const reportees = await db
-        .select({ id: schema.employees.id })
-        .from(schema.employees)
-        .where(eq(schema.employees.reporting_manager_id, user.id));
-      scopedEmpIds = reportees.map((r) => r.id);
-    }
+    const { empIds: scopedEmpIds } = await resolvePMScope(user.id);
 
     const visibleEmpIds = [...new Set(scopedEmpIds)];
 
