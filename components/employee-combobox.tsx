@@ -111,14 +111,16 @@ export function EmployeeCombobox({
           role="combobox"
           size="sm"
           aria-expanded={open}
-          className={cn("w-full justify-between", className)}
+          className={cn("w-full min-w-0 justify-between", className)}
           disabled={disabled}
         >
-          {value === "ALL"
-            ? "All employees"
-            : selectedEmployee
-              ? `${selectedEmployee.employee_code} - ${selectedEmployee.full_name}`
-              : placeholder}
+          <span className="truncate text-left">
+            {value === "ALL"
+              ? "All employees"
+              : selectedEmployee
+                ? `${selectedEmployee.employee_code} - ${selectedEmployee.full_name}`
+                : placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -169,7 +171,9 @@ export function EmployeeCombobox({
                       value === employee.id ? "opacity-100" : "opacity-0",
                     )}
                   />
-                  {employee.employee_code} - {employee.full_name}
+                  <span className="truncate">
+                    {employee.employee_code} - {employee.full_name}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

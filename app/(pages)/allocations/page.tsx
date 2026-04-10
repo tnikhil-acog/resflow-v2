@@ -51,6 +51,7 @@ function AllocationsListContent() {
   const { user, authenticatedFetch } = useAuth();
   const [allocations, setAllocations] = useState<Allocation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // Search and pagination state
   const [searchInput, setSearchInput] = useState("");
@@ -128,10 +129,11 @@ function AllocationsListContent() {
       toast.error("Failed to load allocations");
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
-  if (loading) return <LoadingPage />;
+  if (loading && !hasLoadedOnce) return <LoadingPage />;
 
   return (
     <div className="min-h-screen bg-background">
@@ -197,11 +199,12 @@ function AllocationsListContent() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Employee</label>
                   <EmployeeCombobox
-                    value={employeeFilter}
+                    value={employeeFilter || "ALL"}
                     onValueChange={(v) =>
-                      setEmployeeFilter(v === "" ? undefined : v)
+                      setEmployeeFilter(v === "ALL" || v === "" ? undefined : v)
                     }
                     placeholder="All employees"
+                    showAllOption={true}
                   />
                 </div>
 

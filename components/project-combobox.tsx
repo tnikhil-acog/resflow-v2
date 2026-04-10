@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -123,13 +123,15 @@ export function ProjectCombobox({
           role="combobox"
           size="sm"
           aria-expanded={open}
-          className={cn("w-full justify-between", className)}
+          className={cn("w-full min-w-0 justify-between", className)}
         >
-          {showAllOption && value === "ALL"
-            ? "All Projects"
-            : selectedProject
-              ? `${selectedProject.project_code} - ${selectedProject.project_name}`
-              : placeholder}
+          <span className="truncate text-left">
+            {showAllOption && value === "ALL"
+              ? "All Projects"
+              : selectedProject
+                ? `${selectedProject.project_code} - ${selectedProject.project_name}`
+                : placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -181,8 +183,8 @@ export function ProjectCombobox({
                     )}
                   />
                   <div className="flex flex-col">
-                    <span className="font-medium">{project.project_code}</span>
-                    <span className="text-sm text-muted-foreground">
+                    <span className="truncate font-medium">{project.project_code}</span>
+                    <span className="truncate text-sm text-muted-foreground">
                       {project.project_name}
                     </span>
                   </div>
